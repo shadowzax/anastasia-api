@@ -286,13 +286,18 @@ router.post("/verify", (req, res) => {
 
 router.get("/verify", async (req, res) => {
     try {
-        const email = String(req.query.email || "").trim();
-        const code = String(req.query.code || "").trim();
+        const email = req.query.email ? String(req.query.email).trim() : null;
+        const code = req.query.code ? String(req.query.code).trim() : null;
 
         if (!email || !code) {
             return res.status(400).json({
                 success: false,
-                error: "Email and code are required"
+                error: "Email and code are required",
+                received: {
+                    email: email || null,
+                    code: code || null
+                },
+                query: req.query
             });
         }
 
@@ -310,7 +315,8 @@ router.get("/verify", async (req, res) => {
                 if (!user) {
                     return res.status(404).json({
                         success: false,
-                        error: "User not found"
+                        error: "User not found",
+                        email
                     });
                 }
 
@@ -331,7 +337,9 @@ router.get("/verify", async (req, res) => {
                 if (String(user.verification_code).trim() !== code) {
                     return res.status(400).json({
                         success: false,
-                        error: "Invalid verification code"
+                        error: "Invalid verification code",
+                        received_code: code,
+                        expected_code: String(user.verification_code)
                     });
                 }
 
@@ -366,7 +374,12 @@ router.get("/verify", async (req, res) => {
 
                             return res.status(200).json({
                                 success: true,
-                                message: "Email verified and panel account created successfully"
+                                message: "Email verified and panel account created successfully",
+                                user: {
+                                    id: user.id,
+                                    email: user.email,
+                                    username: user.username
+                                }
                             });
                         }
                     );
