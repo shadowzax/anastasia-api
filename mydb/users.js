@@ -32,7 +32,30 @@ db.serialize(() => {
             verification_code TEXT,
             rank TEXT DEFAULT 'مستخدم',
             level INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            servers_history TEXT DEFAULT '[]',
+            sales TEXT DEFAULT '[]',
+            purchases TEXT DEFAULT '[]',
+            items TEXT DEFAULT '[]',
+            support_tickets TEXT DEFAULT '[]',
+            is_verified INTEGER DEFAULT 0,
+            is_admin INTEGER DEFAULT 0,
+            balance REAL DEFAULT 0,
+            notifications TEXT DEFAULT '[]',
+            profile_image TEXT DEFAULT '${defaultImage}',
+            public_chat TEXT DEFAULT '[]',
+            private_chat TEXT DEFAULT '[]',
+            auctions TEXT DEFAULT '[]',
+            last_operation TEXT,
+            account_type TEXT DEFAULT 'مستخدم',
+            last_daily_gift TEXT,
+            free_servers TEXT DEFAULT '[]',
+            wallet_operations TEXT DEFAULT '[]',
+            ads_balance INTEGER DEFAULT 0,
+            ads_limit_today INTEGER DEFAULT ${ADS_LIMIT},
+            ads_today_used INTEGER DEFAULT 0,
+            last_ad_activate TEXT,
+            ads_history TEXT DEFAULT '[]'
         )
     `);
 
@@ -58,54 +81,6 @@ db.serialize(() => {
         )
     `);
 
-    const requiredColumns = {
-        servers_history: "TEXT DEFAULT '[]'",
-        sales: "TEXT DEFAULT '[]'",
-        purchases: "TEXT DEFAULT '[]'",
-        items: "TEXT DEFAULT '[]'",
-        support_tickets: "TEXT DEFAULT '[]'",
-        is_verified: "INTEGER DEFAULT 0",
-        is_admin: "INTEGER DEFAULT 0",
-        balance: "REAL DEFAULT 0",
-        notifications: "TEXT DEFAULT '[]'",
-        profile_image: `TEXT DEFAULT '${defaultImage}'`,
-        public_chat: "TEXT DEFAULT '[]'",
-        private_chat: "TEXT DEFAULT '[]'",
-        auctions: "TEXT DEFAULT '[]'",
-        verification_code: "TEXT",
-        plain_password: "TEXT",
-        rank: "TEXT DEFAULT 'يوزر'",
-        level: "INTEGER DEFAULT 1",
-        last_operation: "TEXT",
-        account_type: "TEXT DEFAULT 'مستخدم'",
-        last_daily_gift: "TEXT",
-        free_servers: "TEXT DEFAULT '[]' NOT NULL",
-        wallet_operations: "TEXT DEFAULT '[]'",
-
-        ads_balance: "INTEGER DEFAULT 0",
-        ads_limit_today: `INTEGER DEFAULT ${ADS_LIMIT}`,
-        ads_today_used: "INTEGER DEFAULT 0",
-        last_ad_activate: "TEXT",
-        ads_history: "TEXT DEFAULT '[]'"
-    };
-
-    db.all(`PRAGMA table_info(users)`, (err, columns) => {
-        if (err) return console.error(err.message);
-
-        const existing = columns.map(col => col.name);
-
-        for (const [name, type] of Object.entries(requiredColumns)) {
-            if (!existing.includes(name)) {
-                db.run(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
-            }
-        }
-
-        db.run(
-            `UPDATE users SET ads_limit_today = ? WHERE ads_limit_today IS NULL OR ads_limit_today != ?`,
-            [ADS_LIMIT, ADS_LIMIT]
-        );
-    });
-
 });
 
 function generateId() {
@@ -122,9 +97,7 @@ function canActivateAd(user, callback) {
     let lastDate = null;
 
     if (user.last_ad_activate) {
-        lastDate = new Date(user.last_ad_activate)
-            .toISOString()
-            .split("T")[0];
+        lastDate = new Date(user.last_ad_activate).toISOString().split("T")[0];
     }
 
     let usedToday = Number(user.ads_today_used || 0);
