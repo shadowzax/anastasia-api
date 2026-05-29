@@ -284,96 +284,105 @@ router.post("/verify", (req, res) => {
     );
 });
 
-router.get("/verify", (req, res) => {
-    const { email, code } = req.query;
+router.get("/verify", async (req, res) => {
+    try {
+        const email = String(req.query.email || "").trim();
+        const code = String(req.query.code || "").trim();
 
-    if (!email || !code) {
-        return res.status(400).json({
-            success: false,
-            error: "Email and code are required"
-        });
-    }
+        if (!email || !code) {
+            return res.status(400).json({
+                success: false,
+                error: "Email and code are required"
+            });
+        }
 
-    db.get(
-        "SELECT id, email, verification_code, is_verified, plain_password, username FROM users WHERE email = ?",
-        [email],
-        async (err, user) => {
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
-            }
+        db.get(
+            "SELECT id, email, verification_code, is_verified, plain_password, username FROM users WHERE email = ?",
+            [email],
+            async (err, user) => {
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        error: err.message
+                    });
+                }
 
-            if (!user) {
-                return res.status(404).json({
-                    success: false,
-                    error: "User not found"
-                });
-            }
+                if (!user) {
+                    return res.status(404).json({
+                        success: false,
+                        error: "User not found"
+                    });
+                }
 
-            if (Number(user.is_verified) === 1) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Email already verified"
-                });
-            }
+                if (Number(user.is_verified) === 1) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Email already verified"
+                    });
+                }
 
-            if (!user.verification_code) {
-                return res.status(400).json({
-                    success: false,
-                    error: "No verification code found"
-                });
-            }
+                if (!user.verification_code) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "No verification code found"
+                    });
+                }
 
-            if (String(user.verification_code) !== String(code)) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Invalid verification code"
-                });
-            }
+                if (String(user.verification_code).trim() !== code) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Invalid verification code"
+                    });
+                }
 
-            const nameParts = (user.username || "User").trim().split(" ");
+                const nameParts = String(user.username || "User").trim().split(" ");
 
-            const first_name = nameParts[0] || "User";
-            const last_name =
-                nameParts.length > 1
-                    ? nameParts[nameParts.length - 1]
-                    : "User";
+                const first_name = nameParts[0] || "User";
 
-            try {
-                await createOrUpdateUser({
-                    email: user.email,
-                    username: String(user.id),
-                    first_name: first_name,
-                    last_name: last_name,
-                    password: user.plain_password
-                });
+                const last_name =
+                    nameParts.length > 1
+                        ? nameParts[nameParts.length - 1]
+                        : "User";
 
-                db.run(
-                    "UPDATE users SET is_verified = 1, verification_code = NULL, plain_password = NULL WHERE email = ?",
-                    [email],
-                    (err2) => {
-                        if (err2) {
-                            return res.status(500).json({
-                                success: false,
-                                error: err2.message
+                try {
+                    await createOrUpdateUser({
+                        email: user.email,
+                        username: String(user.id),
+                        first_name,
+                        last_name,
+                        password: user.plain_password
+                    });
+
+                    db.run(
+                        "UPDATE users SET is_verified = 1, verification_code = NULL, plain_password = NULL WHERE email = ?",
+                        [email],
+                        (err2) => {
+                            if (err2) {
+                                return res.status(500).json({
+                                    success: false,
+                                    error: err2.message
+                                });
+                            }
+
+                            return res.status(200).json({
+                                success: true,
+                                message: "Email verified and panel account created successfully"
                             });
                         }
-
-                        return res.json({
-                            success: true,
-                            message: "Email verified and panel account created successfully"
-                        });
-                    }
-                );
-            } catch (e) {
-                return res.status(500).json({
-                    success: false,
-                    error: e.message
-                });
+                    );
+                } catch (e) {
+                    return res.status(500).json({
+                        success: false,
+                        error: e.message
+                    });
+                }
             }
-        }
-    );
+        );
+    } catch (e) {
+        return res.status(500).json({
+            success: false,
+            error: e.message
+        });
+    }
 });
 module.exports = router;
