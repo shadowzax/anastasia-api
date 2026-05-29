@@ -140,7 +140,7 @@ router.get("/send", (req, res) => {
 
 
 const CONFIG = {
-    url: "https://panel.anastasia.run",
+    url: "https://dash.anastasiavip.com",
     appKey: "ptla_Q6pH0ozcsiPE5FjEQtkWmR0cwZYJ1wy7CLrmRzfR3GT"
 };
 
