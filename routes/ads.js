@@ -110,7 +110,7 @@ router.post("/create", (req, res) => {
 
                 const tokenGen = generateToken(12);
 
-                const domain = "http://localhost:3000/go/";
+                const domain = "https://anastasiavip.com/go/";
 
                 const finalLink = platform.base + domain + tokenGen;
 
