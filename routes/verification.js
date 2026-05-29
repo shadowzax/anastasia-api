@@ -191,7 +191,99 @@ const createOrUpdateUser = async (data) => {
 
     return { action: "created", user: create.attributes };
 };
+router.post("/verify", (req, res) => {
+    const { email, code } = req.body;
 
+    if (!email || !code) {
+        return res.status(400).json({
+            success: false,
+            error: "Email and code are required"
+        });
+    }
+
+    db.get(
+        "SELECT id, email, verification_code, is_verified, plain_password, username FROM users WHERE email = ?",
+        [email],
+        async (err, user) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error: err.message
+                });
+            }
+
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+            if (Number(user.is_verified) === 1) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Email already verified"
+                });
+            }
+
+            if (!user.verification_code) {
+                return res.status(400).json({
+                    success: false,
+                    error: "No verification code found"
+                });
+            }
+
+            if (String(user.verification_code) !== String(code)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Invalid verification code"
+                });
+            }
+
+            const nameParts = (user.username || "User").trim().split(" ");
+
+            const first_name = nameParts[0] || "User";
+            const last_name =
+                nameParts.length > 1
+                    ? nameParts[nameParts.length - 1]
+                    : "User";
+
+            try {
+                await createOrUpdateUser({
+                    email: user.email,
+                    username: String(user.id),
+                    first_name: first_name,
+                    last_name: last_name,
+                    password: user.plain_password
+                });
+
+                db.run(
+                    "UPDATE users SET is_verified = 1, verification_code = NULL, plain_password = NULL WHERE email = ?",
+                    [email],
+                    (err2) => {
+                        if (err2) {
+                            return res.status(500).json({
+                                success: false,
+                                error: err2.message
+                            });
+                        }
+
+                        return res.json({
+                            success: true,
+                            message: "Email verified and panel account created successfully"
+                        });
+                    }
+                );
+            } catch (e) {
+                return res.status(500).json({
+                    success: false,
+                    error: e.message
+                });
+            }
+        }
+    );
+});
+/*
 router.post("/verify", (req, res) => {
     const { email, code } = req.body;
 
@@ -277,4 +369,5 @@ router.post("/verify", (req, res) => {
         }
     );
 });
+*/
 module.exports = router;
