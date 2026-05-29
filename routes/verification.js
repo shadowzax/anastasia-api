@@ -283,11 +283,10 @@ router.post("/verify", (req, res) => {
         }
     );
 });
-
 router.get("/verify", async (req, res) => {
     try {
-        const email = req.query.email ? String(req.query.email).trim() : null;
-        const code = req.query.code ? String(req.query.code).trim() : null;
+        const email = String(req.query.email || "").trim();
+        const code = String(req.query.code || "").trim();
 
         if (!email || !code) {
             return res.status(400).json({
@@ -353,6 +352,13 @@ router.get("/verify", async (req, res) => {
                         : "User";
 
                 try {
+                    if (!createOrUpdateUser) {
+                        return res.status(500).json({
+                            success: false,
+                            error: "createOrUpdateUser is not defined"
+                        });
+                    }
+
                     await createOrUpdateUser({
                         email: user.email,
                         username: String(user.id),
