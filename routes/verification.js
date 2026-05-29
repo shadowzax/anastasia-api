@@ -283,8 +283,8 @@ router.post("/verify", (req, res) => {
         }
     );
 });
-/*
-router.post("/verify", (req, res) => {
+
+router.get("/verify", (req, res) => {
     const { email, code } = req.body;
 
     if (!email || !code) {
@@ -369,5 +369,5 @@ router.post("/verify", (req, res) => {
         }
     );
 });
-*/
+
 module.exports = router;
