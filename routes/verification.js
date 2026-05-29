@@ -285,7 +285,7 @@ router.post("/verify", (req, res) => {
 });
 
 router.get("/verify", (req, res) => {
-    const { email, code } = req.body;
+    const { email, code } = req.query;
 
     if (!email || !code) {
         return res.status(400).json({
@@ -312,14 +312,21 @@ router.get("/verify", (req, res) => {
                 });
             }
 
-            if (user.is_verified === 1) {
+            if (Number(user.is_verified) === 1) {
                 return res.status(400).json({
                     success: false,
                     error: "Email already verified"
                 });
             }
 
-            if (user.verification_code !== code) {
+            if (!user.verification_code) {
+                return res.status(400).json({
+                    success: false,
+                    error: "No verification code found"
+                });
+            }
+
+            if (String(user.verification_code) !== String(code)) {
                 return res.status(400).json({
                     success: false,
                     error: "Invalid verification code"
@@ -369,5 +376,4 @@ router.get("/verify", (req, res) => {
         }
     );
 });
-
 module.exports = router;
