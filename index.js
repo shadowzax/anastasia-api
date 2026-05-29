@@ -15,7 +15,6 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 app.set('trust proxy', 1);
-app.use(cors());
 
 app.get("/", (req, res) => {
     res.send("Server Running");
