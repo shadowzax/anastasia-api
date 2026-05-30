@@ -19,6 +19,10 @@ const defaultImage = "https://i.ibb.co/WNSTVC8T/i-wasn-t-ready-for-this-flashbac
 
 const ADS_LIMIT = 8;
 
+/* =========================
+   CREATE TABLES (FIRST RUN)
+========================= */
+
 db.serialize(() => {
 
     db.run(`
@@ -81,8 +85,38 @@ db.serialize(() => {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
-
 });
+
+/* =========================
+   AUTO MIGRATION (IMPORTANT FIX)
+   - يمنع خطأ no such column
+========================= */
+
+function addColumnIfNotExists(table, column, type) {
+    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
+        if (err) return console.error(err.message);
+
+        const exists = columns.some(c => c.name === column);
+
+        if (!exists) {
+            db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (e) => {
+                if (e) console.error(`Error adding ${column}:`, e.message);
+                else console.log(`✔ Column added: ${column}`);
+            });
+        }
+    });
+}
+
+/* تأكد من كل الأعمدة المهمة */
+db.serialize(() => {
+    addColumnIfNotExists("users", "orders", "TEXT DEFAULT '[]'");
+    addColumnIfNotExists("users", "wallet_operations", "TEXT DEFAULT '[]'");
+    addColumnIfNotExists("users", "ads_history", "TEXT DEFAULT '[]'");
+});
+
+/* =========================
+   HELPERS
+========================= */
 
 function generateId() {
     return Math.floor(100000000 + Math.random() * 900000000).toString();
@@ -91,6 +125,10 @@ function generateId() {
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
+
+/* =========================
+   ADS CONTROL
+========================= */
 
 function canActivateAd(user, callback) {
     const today = new Date().toISOString().split("T")[0];
@@ -123,6 +161,10 @@ function canActivateAd(user, callback) {
 
     callback({ success: true });
 }
+
+/* =========================
+   ADS BALANCE
+========================= */
 
 function addAdsBalance(userId, amount, platform, code, callback) {
     db.get(
