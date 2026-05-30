@@ -124,7 +124,7 @@ router.post("/create", (req, res) => {
                 };
 
                 history.push(newAd);
-                adsTodayUsed += 1;
+                adsTodayUsed += 0;
 
                 db.run(
                     "UPDATE users SET ads_history = ?, ads_today_used = ?, last_ad_activate = ? WHERE id = ?",
