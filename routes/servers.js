@@ -1522,6 +1522,113 @@ router.get("/:identifier", (req, res) => {
         });
     }
 });
+router.post("/free/renew/:identifier", (req, res) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({
+            success: false,
+            error: "No token provided"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            error: "Invalid token format"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, "secretkey");
+        const { identifier } = req.params;
+
+        db.get(
+            "SELECT * FROM users WHERE id = ?",
+            [decoded.userId],
+            (err, user) => {
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        error: err.message
+                    });
+                }
+
+                if (!user) {
+                    return res.status(404).json({
+                        success: false,
+                        error: "User not found"
+                    });
+                }
+
+                let free_servers = [];
+                try {
+                    free_servers = JSON.parse(user.free_servers || "[]");
+                } catch {
+                    free_servers = [];
+                }
+
+                const serverIndex = free_servers.findIndex(s => s.identifier === identifier);
+
+                if (serverIndex === -1) {
+                    return res.status(404).json({
+                        success: false,
+                        error: "Server not found"
+                    });
+                }
+
+                const server = free_servers[serverIndex];
+
+                const adsBalance = Number(user.ads_balance || 0);
+
+                const cost = 1;
+
+                if (adsBalance < cost) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "Insufficient ads balance"
+                    });
+                }
+
+                const currentEnd = new Date(server.endDate);
+                const newEnd = new Date(currentEnd);
+                newEnd.setHours(newEnd.getHours() + 3);
+
+                server.endDate = newEnd.toISOString();
+
+                free_servers[serverIndex] = server;
+
+                const newAdsBalance = adsBalance - cost;
+
+                db.run(
+                    "UPDATE users SET free_servers = ?, ads_balance = ? WHERE id = ?",
+                    [JSON.stringify(free_servers), newAdsBalance, decoded.userId],
+                    function (updateErr) {
+                        if (updateErr) {
+                            return res.status(500).json({
+                                success: false,
+                                error: updateErr.message
+                            });
+                        }
+
+                        return res.json({
+                            success: true,
+                            server,
+                            ads_balance: newAdsBalance
+                        });
+                    }
+                );
+            }
+        );
+    } catch (err) {
+        return res.status(401).json({
+            success: false,
+            error: "Invalid or expired token"
+        });
+    }
+});
 router.post("/renew/:identifier", (req, res) => {
     const authHeader = req.headers.authorization;
 
