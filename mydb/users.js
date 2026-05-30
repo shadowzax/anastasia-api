@@ -55,7 +55,8 @@ db.serialize(() => {
             ads_limit_today INTEGER DEFAULT ${ADS_LIMIT},
             ads_today_used INTEGER DEFAULT 0,
             last_ad_activate TEXT,
-            ads_history TEXT DEFAULT '[]'
+            ads_history TEXT DEFAULT '[]',
+            orders TEXT DEFAULT '[]'
         )
     `);
 
@@ -153,12 +154,14 @@ function addAdsBalance(userId, amount, platform, code, callback) {
                     Number(user.ads_today_used || 0) + 1;
 
                 db.run(
-                    `UPDATE users
-                     SET ads_balance = ?,
-                         ads_today_used = ?,
-                         last_ad_activate = ?,
-                         ads_history = ?
-                     WHERE id = ?`,
+                    `
+                    UPDATE users
+                    SET ads_balance = ?,
+                        ads_today_used = ?,
+                        last_ad_activate = ?,
+                        ads_history = ?
+                    WHERE id = ?
+                    `,
                     [
                         newBalance,
                         todayUsed,
