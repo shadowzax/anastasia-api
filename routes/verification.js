@@ -141,7 +141,7 @@ router.get("/send", (req, res) => {
 
 const CONFIG = {
     url: "https://dash.anastasiavip.com",
-    appKey: "ptla_Q6pH0ozcsiPE5FjEQtkWmR0cwZYJ1wy7CLrmRzfR3GT"
+    appKey: "ptla_3waW3wOjRLdnXN2YYMmZ76bvGPl3JApLielvCjja0K0"
 };
 
 const pteroRequest = async (method, endpoint, body = null) => {
