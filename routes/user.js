@@ -1,237 +1,346 @@
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
-const fs = require("fs");
+const express = require("express");
+const dbModule = require("../mydb/users");
+const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const db = dbModule.db;
 
-const dataFolder = path.join(__dirname, "..", "data");
+const router = express.Router();
 
-if (!fs.existsSync(dataFolder)) {
-    fs.mkdirSync(dataFolder);
-}
+router.get("/profile", (req, res) => {
+    const authHeader = req.headers.authorization;
 
-const dbPath = path.join(dataFolder, "users.sqlite");
-
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) console.error(err.message);
-    else console.log("Connected to database.");
-});
-
-const defaultImage = "https://i.ibb.co/WNSTVC8T/i-wasn-t-ready-for-this-flashback-anime-blue-lock-s2-character-rin-rules-feel-free-to.jpg";
-
-const ADS_LIMIT = 8;
-
-/* =========================
-   CREATE TABLES (FIRST RUN)
-========================= */
-
-db.serialize(() => {
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT,
-            email TEXT UNIQUE,
-            password TEXT,
-            plain_password TEXT,
-            country TEXT,
-            verification_code TEXT,
-            rank TEXT DEFAULT 'مستخدم',
-            level INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            servers_history TEXT DEFAULT '[]',
-            sales TEXT DEFAULT '[]',
-            purchases TEXT DEFAULT '[]',
-            items TEXT DEFAULT '[]',
-            support_tickets TEXT DEFAULT '[]',
-            is_verified INTEGER DEFAULT 0,
-            is_admin INTEGER DEFAULT 0,
-            balance REAL DEFAULT 0,
-            notifications TEXT DEFAULT '[]',
-            profile_image TEXT DEFAULT '${defaultImage}',
-            public_chat TEXT DEFAULT '[]',
-            private_chat TEXT DEFAULT '[]',
-            auctions TEXT DEFAULT '[]',
-            last_operation TEXT,
-            account_type TEXT DEFAULT 'مستخدم',
-            last_daily_gift TEXT,
-            free_servers TEXT DEFAULT '[]',
-            wallet_operations TEXT DEFAULT '[]',
-            ads_balance INTEGER DEFAULT 0,
-            ads_limit_today INTEGER DEFAULT ${ADS_LIMIT},
-            ads_today_used INTEGER DEFAULT 0,
-            last_ad_activate TEXT,
-            ads_history TEXT DEFAULT '[]',
-            orders TEXT DEFAULT '[]'
-        )
-    `);
-
-    db.run(`
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            userId TEXT,
-            serverName TEXT,
-            serverId TEXT,
-            identifier TEXT,
-            category TEXT,
-            memory INTEGER,
-            disk INTEGER,
-            cpu INTEGER,
-            databases INTEGER DEFAULT 0,
-            backups INTEGER DEFAULT 0,
-            price REAL,
-            planMonths INTEGER,
-            startDate TEXT,
-            endDate TEXT,
-            status TEXT DEFAULT 'active',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-});
-
-/* =========================
-   AUTO MIGRATION (IMPORTANT FIX)
-   - يمنع خطأ no such column
-========================= */
-
-function addColumnIfNotExists(table, column, type) {
-    db.all(`PRAGMA table_info(${table})`, (err, columns) => {
-        if (err) return console.error(err.message);
-
-        const exists = columns.some(c => c.name === column);
-
-        if (!exists) {
-            db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (e) => {
-                if (e) console.error(`Error adding ${column}:`, e.message);
-                else console.log(`✔ Column added: ${column}`);
-            });
-        }
-    });
-}
-
-/* تأكد من كل الأعمدة المهمة */
-db.serialize(() => {
-    addColumnIfNotExists("users", "orders", "TEXT DEFAULT '[]'");
-    addColumnIfNotExists("users", "wallet_operations", "TEXT DEFAULT '[]'");
-    addColumnIfNotExists("users", "ads_history", "TEXT DEFAULT '[]'");
-});
-
-/* =========================
-   HELPERS
-========================= */
-
-function generateId() {
-    return Math.floor(100000000 + Math.random() * 900000000).toString();
-}
-
-function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-/* =========================
-   ADS CONTROL
-========================= */
-
-function canActivateAd(user, callback) {
-    const today = new Date().toISOString().split("T")[0];
-
-    let lastDate = null;
-
-    if (user.last_ad_activate) {
-        lastDate = new Date(user.last_ad_activate).toISOString().split("T")[0];
+    if (!authHeader) {
+        return res.status(401).json({ error: "No token provided" });
     }
 
-    let usedToday = Number(user.ads_today_used || 0);
+    const token = authHeader.split(" ")[1];
 
-    if (lastDate !== today) {
-        usedToday = 0;
+    if (!token) {
+        return res.status(401).json({ error: "Invalid token format" });
+    }
 
-        db.run(
-            `UPDATE users SET ads_today_used = 0 WHERE id = ?`,
-            [user.id]
+    try {
+        const decoded = jwt.verify(token, "secretkey");
+
+        db.get(
+            "SELECT * FROM users WHERE id = ?",
+            [decoded.userId],
+            (err, user) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!user) {
+                    return res.status(404).json({ error: "User not found" });
+                }
+
+                delete user.password;
+
+                res.json({
+                    success: true,
+                    user
+                });
+            }
         );
+    } catch (err) {
+        return res.status(401).json({ error: "Invalid or expired token" });
     }
+});
 
-    const limit = Number(user.ads_limit_today || ADS_LIMIT);
 
-    if (usedToday >= limit) {
-        return callback({
+router.get("/check-token", (req, res) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({
             success: false,
-            message: "تم الوصول للحد اليومي للإعلانات"
+            valid: false,
+            message: "No token provided"
         });
     }
 
-    callback({ success: true });
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            valid: false,
+            message: "Invalid token format"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, "secretkey");
+
+        res.status(200).json({
+            success: true,
+            valid: true,
+            message: "Token is valid",
+            decoded
+        });
+
+    } catch (err) {
+
+        if (err.name === "TokenExpiredError") {
+            return res.status(401).json({
+                success: false,
+                valid: false,
+                expired: true,
+                message: "Token expired"
+            });
+        }
+
+        return res.status(401).json({
+            success: false,
+            valid: false,
+            message: "Invalid token"
+        });
+    }
+});
+/*------------------------------------------------------*/
+const upload = multer({ dest: "uploads/" });
+const fs = require("fs");
+const API_KEY = "cd3664692e0290e136732602b869ba5e";
+const axios = require("axios");
+async function uploadImage(filePath, expiration = 0) {
+    const image = fs.readFileSync(filePath);
+    const base64Image = image.toString("base64");
+
+    const formData = new URLSearchParams();
+    formData.append("key", API_KEY);
+    formData.append("image", base64Image);
+
+    if (expiration) {
+        formData.append("expiration", expiration);
+    }
+
+    const response = await axios.post(
+        "https://api.imgbb.com/1/upload",
+        formData,
+        {
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        }
+    );
+
+    if (response.data && response.data.success) {
+        return response.data.data.url; // أو display_url
+    } else {
+        throw new Error(
+            response.data?.error?.message || "Upload failed"
+        );
+    }
 }
 
-/* =========================
-   ADS BALANCE
-========================= */
+// 🔥 API رفع الصورة
+router.post("/image", upload.single("image"), async (req, res) => {
+    const authHeader = req.headers.authorization;
 
-function addAdsBalance(userId, amount, platform, code, callback) {
-    db.get(
-        `SELECT * FROM users WHERE id = ?`,
-        [userId],
-        (err, user) => {
-            if (err || !user) {
-                return callback(err || "User not found");
-            }
+    if (!authHeader) {
+        return res.status(401).json({ error: "No token provided" });
+    }
 
-            canActivateAd(user, (result) => {
-                if (!result.success) {
-                    return callback(result);
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+        return res.status(401).json({ error: "Invalid token format" });
+    }
+
+    try {
+        const decoded = jwt.verify(token, "secretkey");
+
+        if (!req.file) {
+            return res.status(400).json({ error: "No image uploaded" });
+        }
+
+        // 🔥 رفع الصورة
+        const imageUrl = await uploadImage(req.file.path);
+
+        // 🔥 تحديث DB
+        db.run(
+            "UPDATE users SET profile_image = ? WHERE id = ?",
+            [imageUrl, decoded.userId],
+            function (err) {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
                 }
 
-                const history = JSON.parse(user.ads_history || "[]");
+                if (this.changes === 0) {
+                    return res.status(404).json({ error: "User not found" });
+                }
 
-                history.push({
-                    code,
-                    platform,
-                    amount,
-                    date: new Date().toISOString()
+                res.json({
+                    success: true,
+                    message: "Profile image updated",
+                    profile_image: imageUrl
                 });
+            }
+        );
 
-                const newBalance =
-                    Number(user.ads_balance || 0) + Number(amount);
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+router.post("/charge-request", upload.single("image"), async (req, res) => {
+    const authHeader = req.headers.authorization;
 
-                const todayUsed =
-                    Number(user.ads_today_used || 0) + 1;
+    if (!authHeader) {
+        return res.status(401).json({
+            error: "No token provided"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+        return res.status(401).json({
+            error: "Invalid token format"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, "secretkey");
+
+        const {
+            country,
+            payment_method,
+            amount,
+            currency,
+            currency_id,
+            notes
+        } = req.body;
+
+        if (
+            !country ||
+            !payment_method ||
+            !amount ||
+            !currency ||
+            !currency_id
+        ) {
+            return res.status(400).json({
+                error: "country, payment_method, amount, currency and currency_id are required"
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                error: "Receipt image is required"
+            });
+        }
+
+        const imageUrl = await uploadImage(req.file.path);
+
+        db.get(
+            "SELECT wallet_operations, orders FROM users WHERE id = ?",
+            [decoded.userId],
+            (err, row) => {
+
+                if (err) {
+                    return res.status(500).json({
+                        error: err.message
+                    });
+                }
+
+                if (!row) {
+                    return res.status(404).json({
+                        error: "User not found"
+                    });
+                }
+
+                let walletOperations = [];
+                let orders = [];
+
+                try {
+                    walletOperations = row.wallet_operations
+                        ? JSON.parse(row.wallet_operations)
+                        : [];
+                } catch {
+                    walletOperations = [];
+                }
+
+                try {
+                    orders = row.orders
+                        ? JSON.parse(row.orders)
+                        : [];
+                } catch {
+                    orders = [];
+                }
+
+                const createdAt = new Date().toISOString();
+
+                const operationId = Date.now();
+
+                const newOperation = {
+                    id: operationId,
+                    type: "طلب شحن",
+                    description: `طلب شحن عبر ${payment_method}`,
+                    amount: amount,
+                    country: country,
+                    payment_method: payment_method,
+                    currency: currency,
+                    currency_id: currency_id,
+                    notes: notes || "",
+                    receipt_image: imageUrl,
+                    status: "بانتظار الموافقة",
+                    status_code: "pending",
+                    date: createdAt,
+                    created_at: createdAt
+                };
+
+                const newOrder = {
+                    id: operationId,
+                    order_type: "charge_request",
+                    type: "طلب شحن",
+                    description: `طلب شحن عبر ${payment_method}`,
+                    amount: amount,
+                    country: country,
+                    payment_method: payment_method,
+                    currency: currency,
+                    currency_id: currency_id,
+                    notes: notes || "",
+                    receipt_image: imageUrl,
+                    status: "بانتظار الموافقة",
+                    status_code: "pending",
+                    date: createdAt,
+                    created_at: createdAt
+                };
+
+                walletOperations.push(newOperation);
+
+                orders.push(newOrder);
 
                 db.run(
-                    `
-                    UPDATE users
-                    SET ads_balance = ?,
-                        ads_today_used = ?,
-                        last_ad_activate = ?,
-                        ads_history = ?
-                    WHERE id = ?
-                    `,
+                    "UPDATE users SET wallet_operations = ?, orders = ? WHERE id = ?",
                     [
-                        newBalance,
-                        todayUsed,
-                        new Date().toISOString(),
-                        JSON.stringify(history),
-                        userId
+                        JSON.stringify(walletOperations),
+                        JSON.stringify(orders),
+                        decoded.userId
                     ],
-                    (updateErr) => {
+                    function (updateErr) {
+
                         if (updateErr) {
-                            return callback(updateErr);
+                            return res.status(500).json({
+                                error: updateErr.message
+                            });
                         }
 
-                        callback(null, {
+                        res.json({
                             success: true,
-                            ads_balance: newBalance,
-                            ads_today_used: todayUsed
+                            message: "تم إرسال طلب الشحن بنجاح",
+                            operation: newOperation,
+                            order: newOrder
                         });
                     }
                 );
-            });
-        }
-    );
-}
+            }
+        );
 
-module.exports = {
-    db,
-    generateId,
-    generateCode,
-    canActivateAd,
-    addAdsBalance
-};
+    } catch (err) {
+
+        return res.status(500).json({
+            error: err.message
+        });
+    }
+});
+module.exports = router;
