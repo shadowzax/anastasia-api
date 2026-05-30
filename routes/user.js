@@ -186,17 +186,13 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
-        return res.status(401).json({
-            error: "No token provided"
-        });
+        return res.status(401).json({ error: "No token provided" });
     }
 
     const token = authHeader.split(" ")[1];
 
     if (!token) {
-        return res.status(401).json({
-            error: "Invalid token format"
-        });
+        return res.status(401).json({ error: "Invalid token format" });
     }
 
     try {
@@ -211,22 +207,14 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
             notes
         } = req.body;
 
-        if (
-            !country ||
-            !payment_method ||
-            !amount ||
-            !currency ||
-            !currency_id
-        ) {
+        if (!country || !payment_method || !amount || !currency || !currency_id) {
             return res.status(400).json({
                 error: "country, payment_method, amount, currency and currency_id are required"
             });
         }
 
         if (!req.file) {
-            return res.status(400).json({
-                error: "Receipt image is required"
-            });
+            return res.status(400).json({ error: "Receipt image is required" });
         }
 
         const imageUrl = await uploadImage(req.file.path);
@@ -235,51 +223,41 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
             "SELECT wallet_operations, orders FROM users WHERE id = ?",
             [decoded.userId],
             (err, row) => {
-
                 if (err) {
-                    return res.status(500).json({
-                        error: err.message
-                    });
+                    return res.status(500).json({ error: err.message });
                 }
 
                 if (!row) {
-                    return res.status(404).json({
-                        error: "User not found"
-                    });
+                    return res.status(404).json({ error: "User not found" });
                 }
 
                 let walletOperations = [];
                 let orders = [];
 
                 try {
-                    walletOperations = row.wallet_operations
-                        ? JSON.parse(row.wallet_operations)
-                        : [];
+                    walletOperations = JSON.parse(row.wallet_operations || "[]");
                 } catch {
                     walletOperations = [];
                 }
 
                 try {
-                    orders = row.orders
-                        ? JSON.parse(row.orders)
-                        : [];
+                    orders = JSON.parse(row.orders || "[]");
                 } catch {
                     orders = [];
                 }
 
                 const createdAt = new Date().toISOString();
-
                 const operationId = Date.now();
 
                 const newOperation = {
                     id: operationId,
                     type: "طلب شحن",
                     description: `طلب شحن عبر ${payment_method}`,
-                    amount: amount,
-                    country: country,
-                    payment_method: payment_method,
-                    currency: currency,
-                    currency_id: currency_id,
+                    amount,
+                    country,
+                    payment_method,
+                    currency,
+                    currency_id,
                     notes: notes || "",
                     receipt_image: imageUrl,
                     status: "بانتظار الموافقة",
@@ -293,11 +271,11 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
                     order_type: "charge_request",
                     type: "طلب شحن",
                     description: `طلب شحن عبر ${payment_method}`,
-                    amount: amount,
-                    country: country,
-                    payment_method: payment_method,
-                    currency: currency,
-                    currency_id: currency_id,
+                    amount,
+                    country,
+                    payment_method,
+                    currency,
+                    currency_id,
                     notes: notes || "",
                     receipt_image: imageUrl,
                     status: "بانتظار الموافقة",
@@ -307,7 +285,6 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
                 };
 
                 walletOperations.push(newOperation);
-
                 orders.push(newOrder);
 
                 db.run(
@@ -318,14 +295,11 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
                         decoded.userId
                     ],
                     function (updateErr) {
-
                         if (updateErr) {
-                            return res.status(500).json({
-                                error: updateErr.message
-                            });
+                            return res.status(500).json({ error: updateErr.message });
                         }
 
-                        res.json({
+                        return res.json({
                             success: true,
                             message: "تم إرسال طلب الشحن بنجاح",
                             operation: newOperation,
@@ -337,10 +311,7 @@ router.post("/charge-request", upload.single("image"), async (req, res) => {
         );
 
     } catch (err) {
-
-        return res.status(500).json({
-            error: err.message
-        });
+        return res.status(500).json({ error: err.message });
     }
 });
 module.exports = router;
