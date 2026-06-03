@@ -35,7 +35,7 @@ routes.forEach(route => {
     app.use(`/api/${route}`, require(`./routes/${route}`));
 });
 /*------------------------------------------------*/
-app.get("/users", (req, res) => {
+app.get("/apix/apix/apix/users", (req, res) => {
     db.all("SELECT * FROM users", [], (err, rows) => {
         if (err) {
             return res.status(500).json({ error: err.message });
