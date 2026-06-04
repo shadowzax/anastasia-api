@@ -18,13 +18,6 @@ app.set('trust proxy', 1);
 
 
 
-app.use(cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-
 app.get("/", (req, res) => {
     res.send("Server Running");
 });
@@ -60,7 +53,7 @@ app.get("/apix/apix/apix/users", (req, res) => {
     });
 });
 /*------------------------------------------------*/
-router.get("/expired", (req, res) => {
+app.get("/expired", (req, res) => {
     db.all("SELECT * FROM users", [], (err, users) => {
         if (err) {
             return res.status(500).json({ error: err.message });
