@@ -6,6 +6,281 @@ const serversDB = require("../mydb/servers");
 const router = express.Router();
 const db = dbModule.db;
 
+
+router.post("/create-server", async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader) {
+            return res.status(401).json({ success: false, error: "No token provided" });
+        }
+
+        const token = authHeader.split(" ")[1];
+
+        if (!token) {
+            return res.status(401).json({ success: false, error: "Invalid token format" });
+        }
+
+        let decoded;
+
+        try {
+            decoded = jwt.verify(token, "secretkey");
+        } catch (err) {
+            return res.status(401).json({ success: false, error: "Invalid or expired token" });
+        }
+
+        const userId = decoded.userId;
+
+        const user = await new Promise((resolve, reject) => {
+            db.get("SELECT * FROM users WHERE id = ?", [userId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+
+        if (!user) {
+            return res.status(401).json({ success: false, error: "User not found" });
+        }
+
+        const { server_id, server_name, months } = req.body;
+
+        if (!server_id || !server_name || !months) {
+            return res.status(400).json({
+                success: false,
+                error: "missing required fields"
+            });
+        }
+
+        const plan = await new Promise((resolve, reject) => {
+            serversDB.db.get(
+                "SELECT * FROM servers WHERE id = ? AND status = 'active'",
+                [server_id],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+
+        if (!plan) {
+            return res.status(404).json({ success: false, error: "server plan not found" });
+        }
+
+        const type = plan.config_type.toLowerCase();
+
+        const config = VPS_CONFIG[type];
+
+        const memory = plan.server_ram;
+        const disk = plan.server_storage;
+        const cpu = plan.server_cpu_cores;
+
+        let price = 0;
+
+        if (months == 1) price = plan.new_price_1_month;
+        else if (months == 3) price = plan.new_price_3_months;
+        else if (months == 6) price = plan.new_price_6_months;
+        else {
+            return res.status(400).json({ success: false, error: "invalid months" });
+        }
+
+        if (user.balance < price) {
+            return res.status(400).json({
+                success: false,
+                error: "insufficient balance"
+            });
+        }
+
+        await new Promise((resolve, reject) => {
+            db.run(
+                "UPDATE users SET balance = balance - ? WHERE id = ?",
+                [price, user.id],
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        const allocationId = await getFreeAllocation(config);
+
+        const server = await pteroRequest(
+            config.url,
+            config.appKey,
+            "POST",
+            "application/servers",
+            {
+                name: server_name,
+                user: config.ownerId,
+                nest: config.nestId,
+                egg: config.eggId,
+                docker_image: config.image,
+                startup: config.startup,
+                environment: config.environment,
+                limits: {
+                    memory: Number(memory),
+                    swap: 0,
+                    disk: Number(disk),
+                    io: 500,
+                    cpu: Number(cpu)
+                },
+                feature_limits: {
+                    databases: 0,
+                    backups: 0
+                },
+                allocation: {
+                    default: allocationId
+                }
+            }
+        );
+
+        if (server.errors) {
+            return res.status(400).json({
+                success: false,
+                error: "pterodactyl error",
+                details: server.errors
+            });
+        }
+
+        const serverData = server.attributes;
+
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + Number(months));
+
+        const historyEntry = {
+            serverId: serverData.id,
+            identifier: serverData.identifier,
+            name: serverData.name,
+            category: type,
+            memory,
+            disk,
+            cpu,
+            price,
+            months: Number(months),
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            status: "active",
+            created_at: new Date().toISOString()
+        };
+
+        let currentHistory = [];
+
+        try {
+            currentHistory = Array.isArray(user.servers_history)
+                ? user.servers_history
+                : JSON.parse(user.servers_history || "[]");
+        } catch (e) {
+            currentHistory = [];
+        }
+
+        currentHistory.push(historyEntry);
+
+        await new Promise((resolve, reject) => {
+            db.run(
+                "UPDATE users SET servers_history = ? WHERE id = ?",
+                [JSON.stringify(currentHistory), user.id],
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        await new Promise((resolve, reject) => {
+            db.run(
+                "INSERT INTO orders (userId, serverName, serverId, identifier, category, memory, disk, cpu, databases, backups, price, planMonths, startDate, endDate, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    user.id,
+                    server_name,
+                    serverData.id,
+                    serverData.identifier,
+                    type,
+                    memory,
+                    disk,
+                    cpu,
+                    0,
+                    0,
+                    price,
+                    months,
+                    startDate.toISOString(),
+                    endDate.toISOString(),
+                    "active"
+                ],
+                err => (err ? reject(err) : resolve())
+            );
+        });
+
+        return res.json({
+            success: true,
+            balance: user.balance - price,
+            server: {
+                id: serverData.id,
+                identifier: serverData.identifier,
+                name: serverData.name
+            }
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+router.post("/create-db-server", (req, res) => {
+    const {
+        id,
+        server_name,
+        config_type,
+        cpu_cores,
+        ram,
+        storage,
+        support_24h,
+        vip_file,
+        limited_offer,
+        has_discount,
+        discount_percent,
+        old_price_1_month,
+        old_price_3_months,
+        old_price_6_months,
+        status
+    } = req.body;
+
+    if (!server_name) {
+        return res.status(400).json({
+            success: false,
+            error: "server_name is required"
+        });
+    }
+
+    serversDB.createServer(
+        {
+            id,
+            server_name,
+            config_type,
+            cpu_cores,
+            ram,
+            storage,
+            support_24h,
+            vip_file,
+            limited_offer,
+            has_discount,
+            discount_percent,
+            old_price_1_month,
+            old_price_3_months,
+            old_price_6_months,
+            status
+        },
+        (err) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error: err.message
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: "Server created successfully"
+            });
+        }
+    );
+});
+
 router.post("/create-db-server", (req, res) => {
     const {
         id,
@@ -343,6 +618,7 @@ router.post("/create-free-servers", async (req, res) => {
         return res.status(500).json({ success: false, error: err.message });
     }
 });
+/*
 router.post("/create-server", async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -655,7 +931,7 @@ router.post("/create-server", async (req, res) => {
         });
     }
 });
-
+*/
 /*______________________________________________________*/
 router.post("/add-free-subuser", async (req, res) => {
     try {
