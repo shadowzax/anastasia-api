@@ -60,7 +60,53 @@ app.get("/apix/apix/apix/users", (req, res) => {
     });
 });
 /*------------------------------------------------*/
+router.get("/expired", (req, res) => {
+    db.all("SELECT * FROM users", [], (err, users) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
 
+        const now = new Date();
+        let expiredServers = [];
+
+        users.forEach(user => {
+            let serversHistory = [];
+            let freeServers = [];
+
+            try {
+                serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
+            } catch (e) {
+                serversHistory = [];
+            }
+
+            try {
+                freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
+            } catch (e) {
+                freeServers = [];
+            }
+
+            const allServers = [...serversHistory, ...freeServers];
+
+            const expired = allServers.filter(s => {
+                if (!s.endDate) return false;
+                return new Date(s.endDate) < now;
+            });
+
+            if (expired.length > 0) {
+                expiredServers.push({
+                    userId: user.id,
+                    username: user.username,
+                    expiredServers: expired
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            expiredServers
+        });
+    });
+});
 const VPS_CONFIG = {
     normal: {
         url: "https://dash.anastasiavip.com",
