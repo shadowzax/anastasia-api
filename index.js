@@ -66,21 +66,27 @@ app.get("/expired", async (req, res) => {
         const threeDays = 3 * 24 * 60 * 60 * 1000;
         const expiredServers = [];
 
+        const getConfig = (server) => {
+            const category = String(server.category || "").toLowerCase();
+
+            if (category === "vip") return VPS_CONFIG.vip;
+            if (category === "python") return VPS_CONFIG.python;
+            if (server.source === "free") return VPS_CONFIG.free;
+
+            return VPS_CONFIG.normal;
+        };
+
         for (const user of users) {
             let serversHistory = [];
             let freeServers = [];
 
             try {
                 serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
-            } catch {
-                serversHistory = [];
-            }
+            } catch {}
 
             try {
                 freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
-            } catch {
-                freeServers = [];
-            }
+            } catch {}
 
             const allServers = [
                 ...serversHistory.map(s => ({ ...s, source: "paid" })),
@@ -88,7 +94,10 @@ app.get("/expired", async (req, res) => {
             ];
 
             for (const server of allServers) {
-                if (!server.endDate || !server.identifier || !server.serverId) continue;
+                if (!server.endDate || !server.serverId || !server.identifier || !server.subuserId) continue;
+
+                const config = getConfig(server);
+                if (!config) continue;
 
                 const endTime = new Date(server.endDate).getTime();
                 if (isNaN(endTime)) continue;
@@ -101,10 +110,7 @@ app.get("/expired", async (req, res) => {
                 if (!expired && server.subuserId) {
                     try {
                         const isVip =
-                            server.source === "paid" &&
-                            ["vip", "python", "gold", "premium"].includes(
-                                String(server.category || "").toLowerCase()
-                            );
+                            config === VPS_CONFIG.vip;
 
                         const perms = isVip
                             ? [
