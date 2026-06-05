@@ -5,7 +5,6 @@ const jwt = require("jsonwebtoken");
 const db = dbModule.db;
 const generateId = dbModule.generateId;
 
-const rateLimit = require("express-rate-limit");
 
 const router = express.Router();
 const nodemailer = require("nodemailer");
@@ -65,15 +64,19 @@ ${code}
     return transporter.sendMail(mailOptions);
 };
 
-const registerLimiter = rateLimit({
+
+
+const registerLimiter = require("express-rate-limit");
+
+const limiter = registerLimiter({
     windowMs: 15 * 60 * 1000,
-    max: 3,
-    message: { error: "Too many registration attempts, try again later" }
+    max: 10,
+    message: { error: "Too many requests" }
 });
 
-router.post("/register", registerLimiter, async (req, res) => {
+router.post("/register", limiter, async (req, res) => {
     const { username, email, password, website } = req.body;
-    const ip = req.ip;
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
 
     if (website && website.length > 0) {
         return res.status(400).json({ error: "Bot detected" });
@@ -90,7 +93,10 @@ router.post("/register", registerLimiter, async (req, res) => {
     try {
         const ipCheck = await new Promise((resolve, reject) => {
             db.get(
-                "SELECT COUNT(*) as count FROM users WHERE ip = ? AND created_at > datetime('now','-1 day')",
+                `SELECT COUNT(*) as count 
+                 FROM users 
+                 WHERE ip = ? 
+                 AND datetime(created_at) > datetime('now','-24 hours')`,
                 [ip],
                 (err, row) => {
                     if (err) return reject(err);
@@ -99,52 +105,57 @@ router.post("/register", registerLimiter, async (req, res) => {
             );
         });
 
-        if (ipCheck.count >= 3) {
-            return res.status(403).json({ error: "Too many accounts from this IP" });
+        if (ipCheck.count >= 1) {
+            return res.status(403).json({
+                error: "One account per IP allowed every 24 hours"
+            });
         }
 
-        db.get("SELECT email FROM users WHERE email = ?", [email], async (err, row) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-
-            if (row) {
-                return res.status(400).json({ error: "Email already exists" });
-            }
-
-            try {
-                const hashedPassword = await bcrypt.hash(password, 10);
-                const id = generateId();
-                const verificationCode = generateVerificationCode();
-
-                db.run(
-                    "INSERT INTO users (id, username, email, password, ip, plain_password, verification_code, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
-                    [id, username, email, hashedPassword, ip, password, verificationCode],
-                    async function (err2) {
-                        if (err2) {
-                            return res.status(500).json({ error: err2.message });
-                        }
-
-                        try {
-                            await sendVerificationEmail(email, verificationCode);
-
-                            return res.json({
-                                success: true,
-                                userId: id,
-                                message: "User created and verification email sent"
-                            });
-                        } catch (mailErr) {
-                            return res.status(500).json({
-                                success: false,
-                                error: mailErr.message
-                            });
-                        }
-                    }
-                );
-            } catch (err3) {
-                return res.status(500).json({ error: err3.message });
-            }
+        const emailCheck = await new Promise((resolve, reject) => {
+            db.get(
+                "SELECT id FROM users WHERE email = ?",
+                [email],
+                (err, row) => {
+                    if (err) return reject(err);
+                    resolve(row);
+                }
+            );
         });
+
+        if (emailCheck) {
+            return res.status(400).json({ error: "Email already exists" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const id = generateId();
+        const verificationCode = generateVerificationCode();
+
+        db.run(
+            `INSERT INTO users 
+            (id, username, email, password, ip, verification_code, is_verified, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
+            [id, username, email, hashedPassword, ip, verificationCode],
+            async function (err2) {
+                if (err2) {
+                    return res.status(500).json({ error: err2.message });
+                }
+
+                try {
+                    await sendVerificationEmail(email, verificationCode);
+
+                    return res.json({
+                        success: true,
+                        userId: id,
+                        message: "User created and verification email sent"
+                    });
+                } catch (mailErr) {
+                    return res.status(500).json({
+                        success: false,
+                        error: mailErr.message
+                    });
+                }
+            }
+        );
     } catch (e) {
         return res.status(500).json({ error: e.message });
     }
