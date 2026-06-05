@@ -21,6 +21,47 @@ app.set('trust proxy', 1);
 app.get("/", (req, res) => {
     res.send("Server Running");
 });
+
+app.get("/delete-test-security-users", (req, res) => {
+    const domain = "test-security.com";
+
+    db.all("SELECT * FROM users", [], (err, users) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
+        }
+
+        const targets = users.filter(user =>
+            user.email && user.email.includes(domain)
+        );
+
+        if (targets.length === 0) {
+            return res.json({
+                success: true,
+                message: "No users found with this domain",
+                deleted: 0
+            });
+        }
+
+        let deleted = 0;
+
+        targets.forEach(user => {
+            db.run("DELETE FROM users WHERE id = ?", [user.id], (err) => {
+                if (!err) deleted++;
+            });
+        });
+
+        setTimeout(() => {
+            return res.json({
+                success: true,
+                message: "Users deleted successfully",
+                deleted
+            });
+        }, 1000);
+    });
+});
 /*------------------------------------------------*/
 const routes = ["auth","user","notifications","verification","wallet","support","servers","ads","admin/users","admin/servers","admin/orders"];
 
