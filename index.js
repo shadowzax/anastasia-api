@@ -653,8 +653,7 @@ app.get("/create-servers", (req, res) => {
     });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
     console.log("Server started!");
     console.log("Port:", PORT);
-    console.log("Server IP: http://108.181.221.18:" + PORT);
 });
