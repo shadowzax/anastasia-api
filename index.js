@@ -76,7 +76,19 @@ app.get("/expired", async (req, res) => {
             return VPS_CONFIG.normal;
         };
 
-        for (const user of users) {
+        // 🔥 limit concurrency helper (prevents 504)
+        const runLimited = async (items, fn, limit = 5) => {
+            const queue = [...items];
+            const workers = Array.from({ length: limit }).map(async () => {
+                while (queue.length) {
+                    const item = queue.shift();
+                    await fn(item);
+                }
+            });
+            await Promise.all(workers);
+        };
+
+        await runLimited(users, async (user) => {
             let serversHistory = [];
             let freeServers = [];
 
@@ -93,98 +105,67 @@ app.get("/expired", async (req, res) => {
                 ...freeServers.map(s => ({ ...s, source: "free" }))
             ];
 
-            for (const server of allServers) {
-                if (!server.endDate || !server.serverId || !server.identifier || !server.subuserId) continue;
+            await runLimited(allServers, async (server) => {
+                if (!server.endDate || !server.serverId || !server.identifier) return;
 
                 const config = getConfig(server);
-                if (!config) continue;
+                if (!config) return;
 
                 const endTime = new Date(server.endDate).getTime();
-                if (isNaN(endTime)) continue;
+                if (isNaN(endTime)) return;
 
                 const expired = endTime < now;
                 const deleteAt = endTime + threeDays;
                 const shouldDelete = now >= deleteAt;
 
-                // 🟡 السيرفر شغال → رجّع الصلاحيات
-                if (!expired && server.subuserId) {
+                // 🟡 restore permissions
+                if (!expired) {
                     try {
-                        const isVip =
-                            config === VPS_CONFIG.vip;
-
-                        const perms = isVip
-                            ? [
-                                "control.console",
-                                "control.start",
-                                "control.stop",
-                                "control.restart",
-                                "user.create",
-                                "user.read",
-                                "user.update",
-                                "user.delete",
-                                "file.create",
-                                "file.read",
-                                "file.update",
-                                "file.delete",
-                                "schedule.create",
-                                "schedule.read",
-                                "schedule.update",
-                                "schedule.delete",
-                                "settings.rename",
-                                "activity.read"
-                            ]
-                            : [
-                                "control.console",
-                                "control.start",
-                                "control.stop",
-                                "control.restart",
-                                "user.create",
-                                "user.read",
-                                "user.update",
-                                "user.delete",
-                                "file.create",
-                                "file.read",
-                                "file.read-content",
-                                "file.update",
-                                "file.delete",
-                                "file.archive",
-                                "file.sftp",
-                                "allocation.read",
-                                "startup.read",
-                                "startup.update",
-                                "schedule.create",
-                                "schedule.read",
-                                "schedule.update",
-                                "schedule.delete",
-                                "settings.rename",
-                                "settings.reinstall",
-                                "activity.read"
-                            ];
+                        const perms = [
+                            "control.console",
+                            "control.start",
+                            "control.stop",
+                            "control.restart",
+                            "user.create",
+                            "user.read",
+                            "user.update",
+                            "user.delete",
+                            "file.create",
+                            "file.read",
+                            "file.update",
+                            "file.delete",
+                            "schedule.create",
+                            "schedule.read",
+                            "schedule.update",
+                            "schedule.delete",
+                            "settings.rename",
+                            "activity.read"
+                        ];
 
                         await pteroRequest(
                             config.url,
                             config.clientKey,
                             "PATCH",
-                            `client/servers/${server.identifier}/users/${server.subuserId}`,
+                            `client/servers/${server.identifier}/users`,
                             { permissions: perms }
                         );
                     } catch {}
                 }
 
-                // 🔴 انتهى → شيل الصلاحيات
-                if (expired && server.subuserId) {
+                // 🔴 remove permissions
+                if (expired) {
                     try {
                         await pteroRequest(
                             config.url,
                             config.clientKey,
                             "PATCH",
-                            `client/servers/${server.identifier}/users/${server.subuserId}`,
+                            `client/servers/${server.identifier}/users`,
                             { permissions: [] }
                         );
                     } catch {}
                 }
 
-                // 🗑️ حذف بعد 3 أيام
+                // 🗑️ delete server
                 if (shouldDelete) {
                     try {
                         await pteroRequest(
@@ -218,7 +199,7 @@ app.get("/expired", async (req, res) => {
                     deleteAt: new Date(deleteAt).toISOString(),
                     deleted: shouldDelete
                 });
-            }
+            }, 3); // 👈 limit per user
 
             await new Promise((resolve) => {
                 db.run(
@@ -231,7 +212,7 @@ app.get("/expired", async (req, res) => {
                     () => resolve()
                 );
             });
-        }
+        }, 2); // 👈 global limit
 
         res.json({
             success: true,
