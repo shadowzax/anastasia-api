@@ -10,6 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
+    "express-rate-limit": "*",
+
     "sqlite3": "^5.1.7",
     "sqlite": "^5.1.1",
     "lmdb": "*",
