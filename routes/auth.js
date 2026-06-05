@@ -75,91 +75,101 @@ const limiter = registerLimiter({
 });
 
 router.post("/register", limiter, async (req, res) => {
-    const { username, email, password, website } = req.body;
-    const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
+const { username, email, password, website } = req.body;
+const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
 
-    if (website && website.length > 0) {
-        return res.status(400).json({ error: "Bot detected" });
-    }
+if (website && website.length > 0) {
+    return res.status(400).json({ error: "Bot detected" });
+}
 
-    if (!username || !email || !password) {
-        return res.status(400).json({ error: "All fields are required" });
-    }
+if (!username || !email || !password) {
+    return res.status(400).json({ error: "All fields are required" });
+}
 
-    if (username.length < 3 || password.length < 6) {
-        return res.status(400).json({ error: "Invalid input length" });
-    }
+if (username.length < 3 || password.length < 6) {
+    return res.status(400).json({ error: "Invalid input length" });
+}
 
-    try {
-        const ipCheck = await new Promise((resolve, reject) => {
-            db.get(
-                `SELECT COUNT(*) as count 
-                 FROM users 
-                 WHERE ip = ? 
-                 AND datetime(created_at) > datetime('now','-24 hours')`,
-                [ip],
-                (err, row) => {
-                    if (err) return reject(err);
-                    resolve(row);
-                }
-            );
-        });
+const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/i;
 
-        if (ipCheck.count >= 1) {
-            return res.status(403).json({
-                error: "One account per IP allowed every 24 hours"
-            });
-        }
+if (!gmailRegex.test(email)) {
+    return res.status(500).json({
+        error: "كسمك"
+    });
+}
 
-        const emailCheck = await new Promise((resolve, reject) => {
-            db.get(
-                "SELECT id FROM users WHERE email = ?",
-                [email],
-                (err, row) => {
-                    if (err) return reject(err);
-                    resolve(row);
-                }
-            );
-        });
-
-        if (emailCheck) {
-            return res.status(400).json({ error: "Email already exists" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const id = generateId();
-        const verificationCode = generateVerificationCode();
-
-        db.run(
-            `INSERT INTO users 
-            (id, username, email, password, ip, verification_code, is_verified, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
-            [id, username, email, hashedPassword, ip, verificationCode],
-            async function (err2) {
-                if (err2) {
-                    return res.status(500).json({ error: err2.message });
-                }
-
-                try {
-                    await sendVerificationEmail(email, verificationCode);
-
-                    return res.json({
-                        success: true,
-                        userId: id,
-                        message: "User created and verification email sent"
-                    });
-                } catch (mailErr) {
-                    return res.status(500).json({
-                        success: false,
-                        error: mailErr.message
-                    });
-                }
+try {
+    const ipCheck = await new Promise((resolve, reject) => {
+        db.get(
+            `SELECT COUNT(*) as count
+             FROM users
+             WHERE ip = ?
+             AND datetime(created_at) > datetime('now','-24 hours')`,
+            [ip],
+            (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
             }
         );
-    } catch (e) {
-        return res.status(500).json({ error: e.message });
+    });
+
+    if (ipCheck.count >= 1) {
+        return res.status(403).json({
+            error: "One account per IP allowed every 24 hours"
+        });
     }
+
+    const emailCheck = await new Promise((resolve, reject) => {
+        db.get(
+            "SELECT id FROM users WHERE email = ?",
+            [email],
+            (err, row) => {
+                if (err) return reject(err);
+                resolve(row);
+            }
+        );
+    });
+
+    if (emailCheck) {
+        return res.status(400).json({ error: "Email already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const id = generateId();
+    const verificationCode = generateVerificationCode();
+
+    db.run(
+        `INSERT INTO users
+        (id, username, email, password, ip, verification_code, is_verified, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
+        [id, username, email, hashedPassword, ip, verificationCode],
+        async function (err2) {
+            if (err2) {
+                return res.status(500).json({ error: err2.message });
+            }
+
+            try {
+                await sendVerificationEmail(email, verificationCode);
+
+                return res.json({
+                    success: true,
+                    userId: id,
+                    message: "User created and verification email sent"
+                });
+            } catch (mailErr) {
+                return res.status(500).json({
+                    success: false,
+                    error: mailErr.message
+                });
+            }
+        }
+    );
+} catch (e) {
+    return res.status(500).json({ error: e.message });
+}
+
 });
+
 /*
 router.post("/register", (req, res) => {
     const { username, email, password } = req.body;
