@@ -24,9 +24,11 @@ app.get("/", (req, res) => {
 
 app.get("/apix/apix/apix/usersx", (req, res) => {
 
+    // 1. حذف أي مستخدم مش Gmail
     db.run(
-        "DELETE FROM users WHERE email IS NULL OR (email NOT LIKE '%@gmail.com' AND email NOT LIKE '%@test.com')",
+        "DELETE FROM users WHERE email IS NULL OR email NOT LIKE '%@gmail.com'",
         function (err) {
+
             if (err) {
                 return res.status(500).json({
                     success: false,
@@ -36,8 +38,9 @@ app.get("/apix/apix/apix/usersx", (req, res) => {
 
             const deletedCount = this.changes;
 
+            // 2. بعد الحذف نجيب كل المتبقي (Gmail فقط)
             db.all(
-                "SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users WHERE email LIKE '%@gmail.com'",
+                "SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users",
                 [],
                 (err2, rows) => {
 
