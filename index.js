@@ -23,53 +23,66 @@ app.get("/", (req, res) => {
 });
 
 app.get("/apix/apix/apix/usersx", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, rows) => {
+    db.all("SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users", [], (err, rows) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
 
-        // نحسب اللي هيتحذف
-        const idsToDelete = rows
-            .filter(user => !user.email || !user.email.endsWith("@gmail.com"))
-            .map(user => user.id);
+        // فصل Gmail وغير Gmail
+        const gmailUsers = [];
+        const idsToDelete = [];
 
-        // حذف جماعي في استعلام واحد
+        for (const user of rows) {
+            if (user.email && user.email.endsWith("@gmail.com")) {
+                gmailUsers.push({
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+
+                    orders: safeParse(user.orders),
+                    items: safeParse(user.items),
+                    notifications: safeParse(user.notifications),
+                    public_chat: safeParse(user.public_chat),
+                    private_chat: safeParse(user.private_chat),
+                    auctions: safeParse(user.auctions),
+                    sales: safeParse(user.sales),
+                    purchases: safeParse(user.purchases)
+                });
+            } else {
+                idsToDelete.push(user.id);
+            }
+        }
+
+        // لو فيه حاجة تتشال
         if (idsToDelete.length > 0) {
             const placeholders = idsToDelete.map(() => "?").join(",");
 
             db.run(
                 `DELETE FROM users WHERE id IN (${placeholders})`,
-                idsToDelete
+                idsToDelete,
+                (delErr) => {
+                    if (delErr) {
+                        return res.status(500).json({ error: delErr.message });
+                    }
+
+                    return res.json({
+                        success: true,
+                        deleted: idsToDelete.length,
+                        count: gmailUsers.length,
+                        users: gmailUsers
+                    });
+                }
             );
+        } else {
+            return res.json({
+                success: true,
+                deleted: 0,
+                count: gmailUsers.length,
+                users: gmailUsers
+            });
         }
-
-        // نرجع بس Gmail users
-        const gmailUsers = rows
-            .filter(user => user.email && user.email.endsWith("@gmail.com"))
-            .map(user => ({
-                id: user.id,
-                username: user.username,
-                email: user.email,
-
-                orders: safeParse(user.orders),
-                items: safeParse(user.items),
-                notifications: safeParse(user.notifications),
-                public_chat: safeParse(user.public_chat),
-                private_chat: safeParse(user.private_chat),
-                auctions: safeParse(user.auctions),
-                sales: safeParse(user.sales),
-                purchases: safeParse(user.purchases)
-            }));
-
-        return res.json({
-            success: true,
-            deleted: idsToDelete.length,
-            count: gmailUsers.length,
-            users: gmailUsers
-        });
     });
 });
-
 
 /*------------------------------------------------*/
 const routes = ["auth","user","notifications","verification","wallet","support","servers","ads","admin/users","admin/servers","admin/orders"];
