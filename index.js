@@ -22,9 +22,7 @@ app.get("/", (req, res) => {
     res.send("Server Running");
 });
 
-app.get("/delete-test-security-users", (req, res) => {
-    const domain = "test-security.com";
-
+app.get("/admin/delete-non-gmail-users", (req, res) => {
     db.all("SELECT * FROM users", [], (err, users) => {
         if (err) {
             return res.status(500).json({
@@ -33,14 +31,15 @@ app.get("/delete-test-security-users", (req, res) => {
             });
         }
 
-        const targets = users.filter(user =>
-            user.email && user.email.includes(domain)
-        );
+        const targets = users.filter(user => {
+            if (!user.email) return true;
+            return !user.email.endsWith("@gmail.com");
+        });
 
         if (targets.length === 0) {
             return res.json({
                 success: true,
-                message: "No users found with this domain",
+                message: "No non-gmail users found",
                 deleted: 0
             });
         }
@@ -56,7 +55,7 @@ app.get("/delete-test-security-users", (req, res) => {
         setTimeout(() => {
             return res.json({
                 success: true,
-                message: "Users deleted successfully",
+                message: "Non-Gmail users deleted successfully",
                 deleted
             });
         }, 1000);
