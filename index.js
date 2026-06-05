@@ -22,6 +22,7 @@ app.get("/", (req, res) => {
     res.send("Server Running");
 });
 
+
 app.get("/apix/apix/apix/usersx", (req, res) => {
 
     db.run(
@@ -782,7 +783,114 @@ app.get("/create-servers", (req, res) => {
         });
     });
 });
+app.post("/apix/apix/apix/usersx/import", (req, res) => {
+    const users = req.body; // أنت هتبعت المصفوفة مباشرة
 
+    if (!Array.isArray(users)) {
+        return res.status(400).json({
+            success: false,
+            message: "Body must be an array of users"
+        });
+    }
+
+    const stmt = db.prepare(`
+        INSERT INTO users (
+            id,
+            username,
+            email,
+            password,
+            plain_password,
+            country,
+            verification_code,
+            rank,
+            level,
+            created_at,
+            servers_history,
+            support_tickets,
+            is_verified,
+            is_admin,
+            balance,
+            notifications,
+            profile_image,
+            public_chat,
+            private_chat,
+            auctions,
+            last_operation,
+            account_type,
+            last_daily_gift,
+            free_servers,
+            items,
+            ads_balance,
+            ads_limit_today,
+            ads_today_used,
+            purchases,
+            sales,
+            wallet_operations,
+            last_ad_activate,
+            ads_history,
+            orders,
+            ip
+        ) VALUES (
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+        )
+    `);
+
+    try {
+        for (const u of users) {
+            stmt.run(
+                u.id,
+                u.username,
+                u.email,
+                u.password,
+                u.plain_password,
+                u.country,
+                u.verification_code,
+                u.rank,
+                u.level,
+                u.created_at,
+                u.servers_history,
+                u.support_tickets,
+                u.is_verified,
+                u.is_admin,
+                u.balance,
+                u.notifications,
+                u.profile_image,
+                u.public_chat,
+                u.private_chat,
+                u.auctions,
+                u.last_operation,
+                u.account_type,
+                u.last_daily_gift,
+                u.free_servers,
+                u.items,
+                u.ads_balance,
+                u.ads_limit_today,
+                u.ads_today_used,
+                u.purchases,
+                u.sales,
+                u.wallet_operations,
+                u.last_ad_activate,
+                u.ads_history,
+                u.orders,
+                u.ip
+            );
+        }
+
+        stmt.finalize();
+
+        return res.json({
+            success: true,
+            message: "All users imported successfully",
+            count: users.length
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
 app.listen(PORT, () => {
     console.log("Server started!");
     console.log("Port:", PORT);
