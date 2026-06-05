@@ -11,8 +11,8 @@ const nodemailer = require("nodemailer");
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: "anastasiapay13@gmail.com",
-        pass: "yezo ssxk axnh sxam"
+        user: "anastasiahost13@gmail.com",
+        pass: "kzen tomf flcq ooms"
     }
 });
 
@@ -62,57 +62,91 @@ ${code}
 
     return transporter.sendMail(mailOptions);
 };
+const rateLimit = require("express-rate-limit");
 
-router.post("/registerx", (req, res) => {
-    const { username, email, password } = req.body;
+const registerLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 3,
+    message: { error: "Too many registration attempts, try again later" }
+});
+
+router.post("/registerx", registerLimiter, async (req, res) => {
+    const { username, email, password, website } = req.body;
+    const ip = req.ip;
+
+    if (website && website.length > 0) {
+        return res.status(400).json({ error: "Bot detected" });
+    }
 
     if (!username || !email || !password) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
-    db.get("SELECT email FROM users WHERE email = ?", [email], async (err, row) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
+    if (username.length < 3 || password.length < 6) {
+        return res.status(400).json({ error: "Invalid input length" });
+    }
 
-        if (row) {
-            return res.status(400).json({ error: "Email already exists" });
-        }
-
-        try {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            const plainPassword = password;
-            const id = generateId();
-            const verificationCode = generateVerificationCode();
-
-            db.run(
-                "INSERT INTO users (id, username, email, password, plain_password, verification_code, is_verified) VALUES (?, ?, ?, ?, ?, ?, 0)",
-                [id, username, email, hashedPassword, plainPassword, verificationCode],
-                async function (err2) {
-                    if (err2) {
-                        return res.status(500).json({ error: err2.message });
-                    }
-
-                    try {
-                        await sendVerificationEmail(email, verificationCode);
-
-                        return res.json({
-                            success: true,
-                            userId: id,
-                            message: "User created and verification email sent"
-                        });
-                    } catch (mailErr) {
-                        return res.status(500).json({
-                            success: false,
-                            error: mailErr.message
-                        });
-                    }
+    try {
+        const ipCheck = await new Promise((resolve, reject) => {
+            db.get(
+                "SELECT COUNT(*) as count FROM users WHERE ip = ? AND created_at > datetime('now','-1 day')",
+                [ip],
+                (err, row) => {
+                    if (err) return reject(err);
+                    resolve(row);
                 }
             );
-        } catch (err3) {
-            return res.status(500).json({ error: err3.message });
+        });
+
+        if (ipCheck.count >= 3) {
+            return res.status(403).json({ error: "Too many accounts from this IP" });
         }
-    });
+
+        db.get("SELECT email FROM users WHERE email = ?", [email], async (err, row) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            if (row) {
+                return res.status(400).json({ error: "Email already exists" });
+            }
+
+            try {
+                const hashedPassword = await bcrypt.hash(password, 10);
+                const id = generateId();
+                const verificationCode = generateVerificationCode();
+
+                db.run(
+                    "INSERT INTO users (id, username, email, password, ip, plain_password, verification_code, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
+                    [id, username, email, hashedPassword, ip, password, verificationCode],
+                    async function (err2) {
+                        if (err2) {
+                            return res.status(500).json({ error: err2.message });
+                        }
+
+                        try {
+                            await sendVerificationEmail(email, verificationCode);
+
+                            return res.json({
+                                success: true,
+                                userId: id,
+                                message: "User created and verification email sent"
+                            });
+                        } catch (mailErr) {
+                            return res.status(500).json({
+                                success: false,
+                                error: mailErr.message
+                            });
+                        }
+                    }
+                );
+            } catch (err3) {
+                return res.status(500).json({ error: err3.message });
+            }
+        });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
 });
 /*
 router.post("/register", (req, res) => {
