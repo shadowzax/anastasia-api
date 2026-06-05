@@ -23,66 +23,60 @@ app.get("/", (req, res) => {
 });
 
 app.get("/apix/apix/apix/usersx", (req, res) => {
-    db.all("SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users", [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
 
-        // فصل Gmail وغير Gmail
-        const gmailUsers = [];
-        const idsToDelete = [];
-
-        for (const user of rows) {
-            if (user.email && user.email.endsWith("@gmail.com")) {
-                gmailUsers.push({
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-
-                    orders: safeParse(user.orders),
-                    items: safeParse(user.items),
-                    notifications: safeParse(user.notifications),
-                    public_chat: safeParse(user.public_chat),
-                    private_chat: safeParse(user.private_chat),
-                    auctions: safeParse(user.auctions),
-                    sales: safeParse(user.sales),
-                    purchases: safeParse(user.purchases)
+    // 1. نحذف كل غير Gmail مباشرة من SQL (سريع جدًا)
+    db.run(
+        "DELETE FROM users WHERE email IS NULL OR email NOT LIKE '%@gmail.com'",
+        function (err) {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    error: err.message
                 });
-            } else {
-                idsToDelete.push(user.id);
             }
-        }
 
-        // لو فيه حاجة تتشال
-        if (idsToDelete.length > 0) {
-            const placeholders = idsToDelete.map(() => "?").join(",");
+            const deletedCount = this.changes;
 
-            db.run(
-                `DELETE FROM users WHERE id IN (${placeholders})`,
-                idsToDelete,
-                (delErr) => {
-                    if (delErr) {
-                        return res.status(500).json({ error: delErr.message });
+            // 2. نجيب فقط Gmail users بعد التنظيف
+            db.all(
+                "SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users WHERE email LIKE '%@gmail.com'",
+                [],
+                (err2, rows) => {
+
+                    if (err2) {
+                        return res.status(500).json({
+                            success: false,
+                            error: err2.message
+                        });
                     }
+
+                    const users = rows.map(user => ({
+                        id: user.id,
+                        username: user.username,
+                        email: user.email,
+
+                        orders: safeParse(user.orders),
+                        items: safeParse(user.items),
+                        notifications: safeParse(user.notifications),
+                        public_chat: safeParse(user.public_chat),
+                        private_chat: safeParse(user.private_chat),
+                        auctions: safeParse(user.auctions),
+                        sales: safeParse(user.sales),
+                        purchases: safeParse(user.purchases)
+                    }));
 
                     return res.json({
                         success: true,
-                        deleted: idsToDelete.length,
-                        count: gmailUsers.length,
-                        users: gmailUsers
+                        deleted: deletedCount,
+                        count: users.length,
+                        users
                     });
                 }
             );
-        } else {
-            return res.json({
-                success: true,
-                deleted: 0,
-                count: gmailUsers.length,
-                users: gmailUsers
-            });
         }
-    });
+    );
 });
+
 
 /*------------------------------------------------*/
 const routes = ["auth","user","notifications","verification","wallet","support","servers","ads","admin/users","admin/servers","admin/orders"];
