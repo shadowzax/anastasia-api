@@ -62,7 +62,7 @@ app.get("/expired", async (req, res) => {
             });
         });
 
-        const now = new Date();
+        const now = Date.now();
         const threeDays = 3 * 24 * 60 * 60 * 1000;
         const expiredServers = [];
 
@@ -88,81 +88,72 @@ app.get("/expired", async (req, res) => {
             ];
 
             for (const server of allServers) {
-                if (!server.endDate) continue;
+                if (!server.endDate || !server.identifier || !server.serverId) continue;
 
-                const endDate = new Date(server.endDate);
-                const expired = endDate < now;
+                const endTime = new Date(server.endDate).getTime();
+                if (isNaN(endTime)) continue;
 
+                const expired = endTime < now;
+                const deleteAt = endTime + threeDays;
+                const shouldDelete = now >= deleteAt;
+
+                // 🟡 السيرفر شغال → رجّع الصلاحيات
                 if (!expired && server.subuserId) {
                     try {
-                        const normalPerms = [
-                            "control.console",
-                            "control.start",
-                            "control.stop",
-                            "control.restart",
-
-                            "user.create",
-                            "user.read",
-                            "user.update",
-                            "user.delete",
-
-                            "file.create",
-                            "file.read",
-                            "file.read-content",
-                            "file.update",
-                            "file.delete",
-                            "file.archive",
-                            "file.sftp",
-
-                            "allocation.read",
-
-                            "startup.read",
-                            "startup.update",
-
-                            "schedule.create",
-                            "schedule.read",
-                            "schedule.update",
-                            "schedule.delete",
-
-                            "settings.rename",
-                            "settings.reinstall",
-
-                            "activity.read"
-                        ];
-
-                        const vipPerms = [
-                            "control.console",
-                            "control.start",
-                            "control.stop",
-                            "control.restart",
-
-                            "user.create",
-                            "user.read",
-                            "user.update",
-                            "user.delete",
-
-                            "file.create",
-                            "file.read",
-                            "file.update",
-                            "file.delete",
-
-                            "schedule.create",
-                            "schedule.read",
-                            "schedule.update",
-                            "schedule.delete",
-
-                            "settings.rename",
-
-                            "activity.read"
-                        ];
-
                         const isVip =
                             server.source === "paid" &&
                             ["vip", "python", "gold", "premium"].includes(
                                 String(server.category || "").toLowerCase()
                             );
 
-                        const perms = isVip ? vipPerms : normalPerms;
+                        const perms = isVip
+                            ? [
+                                "control.console",
+                                "control.start",
+                                "control.stop",
+                                "control.restart",
+                                "user.create",
+                                "user.read",
+                                "user.update",
+                                "user.delete",
+                                "file.create",
+                                "file.read",
+                                "file.update",
+                                "file.delete",
+                                "schedule.create",
+                                "schedule.read",
+                                "schedule.update",
+                                "schedule.delete",
+                                "settings.rename",
+                                "activity.read"
+                            ]
+                            : [
+                                "control.console",
+                                "control.start",
+                                "control.stop",
+                                "control.restart",
+                                "user.create",
+                                "user.read",
+                                "user.update",
+                                "user.delete",
+                                "file.create",
+                                "file.read",
+                                "file.read-content",
+                                "file.update",
+                                "file.delete",
+                                "file.archive",
+                                "file.sftp",
+                                "allocation.read",
+                                "startup.read",
+                                "startup.update",
+                                "schedule.create",
+                                "schedule.read",
+                                "schedule.update",
+                                "schedule.delete",
+                                "settings.rename",
+                                "settings.reinstall",
+                                "activity.read"
+                            ];
 
                         await pteroRequest(
                             config.url,
@@ -174,6 +165,7 @@ app.get("/expired", async (req, res) => {
                     } catch {}
                 }
 
+                // 🔴 انتهى → شيل الصلاحيات
                 if (expired && server.subuserId) {
                     try {
                         await pteroRequest(
@@ -186,9 +178,7 @@ app.get("/expired", async (req, res) => {
                     } catch {}
                 }
 
-                const deleteAt = new Date(endDate.getTime() + threeDays);
-                const shouldDelete = now >= deleteAt;
-
+                // 🗑️ حذف بعد 3 أيام
                 if (shouldDelete) {
                     try {
                         await pteroRequest(
@@ -219,7 +209,7 @@ app.get("/expired", async (req, res) => {
                     name: server.name,
                     category: server.category || "normal",
                     expiredAt: server.endDate,
-                    deleteAt: deleteAt.toISOString(),
+                    deleteAt: new Date(deleteAt).toISOString(),
                     deleted: shouldDelete
                 });
             }
