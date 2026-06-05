@@ -53,46 +53,128 @@ app.get("/apix/apix/apix/users", (req, res) => {
     });
 });
 /*------------------------------------------------*/
-app.get("/expired", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, users) => {
+app.get("/expired", async (req, res) => {
+    db.all("SELECT * FROM users", [], async (err, users) => {
         if (err) {
-            return res.status(500).json({ error: err.message });
+            return res.status(500).json({
+                success: false,
+                error: err.message
+            });
         }
 
         const now = new Date();
-        let expiredServers = [];
+        const threeDays = 3 * 24 * 60 * 60 * 1000;
+        const expiredServers = [];
 
-        users.forEach(user => {
+        for (const user of users) {
             let serversHistory = [];
             let freeServers = [];
 
             try {
                 serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
-            } catch (e) {
+            } catch {
                 serversHistory = [];
             }
 
             try {
                 freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
-            } catch (e) {
+            } catch {
                 freeServers = [];
             }
 
-            const allServers = [...serversHistory, ...freeServers];
+            const allServers = [
+                ...serversHistory.map(server => ({
+                    ...server,
+                    source: "paid"
+                })),
+                ...freeServers.map(server => ({
+                    ...server,
+                    source: "free"
+                }))
+            ];
 
-            const expired = allServers.filter(s => {
-                if (!s.endDate) return false;
-                return new Date(s.endDate) < now;
-            });
+            for (const server of allServers) {
+                if (!server.endDate) continue;
 
-            if (expired.length > 0) {
+                const endDate = new Date(server.endDate);
+                const expired = endDate < now;
+
+                if (!expired) {
+                    if (server.subuserId) {
+                        try {
+                            const isVip =
+                                server.source === "paid" &&
+                                ["vip", "python", "gold", "premium"].includes(
+                                    String(server.category || "").toLowerCase()
+                                );
+
+                            await restoreSubuserPermissions(
+                                config,
+                                server.identifier,
+                                server.subuserId,
+                                isVip
+                            );
+                        } catch {}
+                    }
+
+                    continue;
+                }
+
+                if (server.subuserId) {
+                    try {
+                        await removeSubuserPermissions(
+                            config,
+                            server.identifier,
+                            server.subuserId
+                        );
+                    } catch {}
+                }
+
+                const deleteAt = new Date(endDate.getTime() + threeDays);
+                const shouldDelete = now >= deleteAt;
+
+                if (shouldDelete) {
+                    try {
+                        await deleteServer(
+                            config,
+                            server.serverId
+                        );
+
+                        if (server.source === "paid") {
+                            serversHistory = serversHistory.filter(
+                                s => s.serverId !== server.serverId
+                            );
+                        } else {
+                            freeServers = freeServers.filter(
+                                s => s.serverId !== server.serverId
+                            );
+                        }
+                    } catch {}
+                }
+
                 expiredServers.push({
                     userId: user.id,
                     username: user.username,
-                    expiredServers: expired
+                    email: user.email,
+                    serverId: server.serverId,
+                    identifier: server.identifier,
+                    name: server.name,
+                    category: server.category || "normal",
+                    expiredAt: server.endDate,
+                    deleteAt: deleteAt.toISOString(),
+                    deleted: shouldDelete
                 });
             }
-        });
+
+            db.run(
+                "UPDATE users SET servers_history = ?, free_servers = ? WHERE id = ?",
+                [
+                    JSON.stringify(serversHistory),
+                    JSON.stringify(freeServers),
+                    user.id
+                ]
+            );
+        }
 
         res.json({
             success: true,
