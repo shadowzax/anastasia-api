@@ -69,46 +69,53 @@ routes.forEach(route => {
 });
 /*------------------------------------------------*/
 app.get("/apix/apix/apix/users", (req, res) => {
-    const limit = parseInt(req.query.limit) || 1000;
-    const offset = parseInt(req.query.offset) || 0;
-
-    db.all(
-        "SELECT * FROM users LIMIT ? OFFSET ?",
-        [limit, offset],
-        (err, rows) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-
-            const filteredUsers = rows
-                .filter(user => user.email && user.email.endsWith("@gmail.com"))
-                .map(user => ({
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-
-                    orders: safeParse(user.orders),
-                    items: safeParse(user.items),
-                    notifications: safeParse(user.notifications),
-                    public_chat: safeParse(user.public_chat),
-                    private_chat: safeParse(user.private_chat),
-                    auctions: safeParse(user.auctions),
-                    sales: safeParse(user.sales),
-                    purchases: safeParse(user.purchases)
-                }));
-
-            return res.json({
-                success: true,
-                count: filteredUsers.length,
-                limit,
-                offset,
-                users: filteredUsers
-            });
+    db.all("SELECT * FROM users", [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
         }
-    );
+
+        const toDelete = [];
+        const validUsers = [];
+
+        rows.forEach(user => {
+            if (user.email && user.email.endsWith("@gmail.com")) {
+                validUsers.push(user);
+            } else {
+                toDelete.push(user.id);
+            }
+        });
+
+        // حذف غير Gmail
+        toDelete.forEach(id => {
+            db.run("DELETE FROM users WHERE id = ?", [id]);
+        });
+
+        const parsedUsers = validUsers.map(user => ({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+
+            orders: safeParse(user.orders),
+            items: safeParse(user.items),
+            notifications: safeParse(user.notifications),
+            public_chat: safeParse(user.public_chat),
+            private_chat: safeParse(user.private_chat),
+            auctions: safeParse(user.auctions),
+            sales: safeParse(user.sales),
+            purchases: safeParse(user.purchases)
+        }));
+
+        return res.json({
+            success: true,
+            message: "Non-Gmail users deleted successfully",
+            deleted: toDelete.length,
+            count: parsedUsers.length,
+            users: parsedUsers
+        });
+    });
 });
 
-// helper function
+// helper
 function safeParse(data) {
     try {
         return JSON.parse(data || "[]");
