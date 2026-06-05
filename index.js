@@ -22,45 +22,55 @@ app.get("/", (req, res) => {
     res.send("Server Running");
 });
 
-app.get("/admin/delete-non-gmail-users", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, users) => {
+app.get("/apix/apix/apix/usersx", (req, res) => {
+    db.all("SELECT * FROM users", [], (err, rows) => {
         if (err) {
-            return res.status(500).json({
-                success: false,
-                error: err.message
-            });
+            return res.status(500).json({ error: err.message });
         }
 
-        const targets = users.filter(user => {
-            if (!user.email) return true;
-            return !user.email.endsWith("@gmail.com");
-        });
+        // نحسب اللي هيتحذف
+        const idsToDelete = rows
+            .filter(user => !user.email || !user.email.endsWith("@gmail.com"))
+            .map(user => user.id);
 
-        if (targets.length === 0) {
-            return res.json({
-                success: true,
-                message: "No non-gmail users found",
-                deleted: 0
-            });
+        // حذف جماعي في استعلام واحد
+        if (idsToDelete.length > 0) {
+            const placeholders = idsToDelete.map(() => "?").join(",");
+
+            db.run(
+                `DELETE FROM users WHERE id IN (${placeholders})`,
+                idsToDelete
+            );
         }
 
-        let deleted = 0;
+        // نرجع بس Gmail users
+        const gmailUsers = rows
+            .filter(user => user.email && user.email.endsWith("@gmail.com"))
+            .map(user => ({
+                id: user.id,
+                username: user.username,
+                email: user.email,
 
-        targets.forEach(user => {
-            db.run("DELETE FROM users WHERE id = ?", [user.id], (err) => {
-                if (!err) deleted++;
-            });
+                orders: safeParse(user.orders),
+                items: safeParse(user.items),
+                notifications: safeParse(user.notifications),
+                public_chat: safeParse(user.public_chat),
+                private_chat: safeParse(user.private_chat),
+                auctions: safeParse(user.auctions),
+                sales: safeParse(user.sales),
+                purchases: safeParse(user.purchases)
+            }));
+
+        return res.json({
+            success: true,
+            deleted: idsToDelete.length,
+            count: gmailUsers.length,
+            users: gmailUsers
         });
-
-        setTimeout(() => {
-            return res.json({
-                success: true,
-                message: "Non-Gmail users deleted successfully",
-                deleted
-            });
-        }, 1000);
     });
 });
+
+
 /*------------------------------------------------*/
 const routes = ["auth","user","notifications","verification","wallet","support","servers","ads","admin/users","admin/servers","admin/orders"];
 
