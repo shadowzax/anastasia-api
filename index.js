@@ -54,13 +54,13 @@ app.get("/apix/apix/apix/users", (req, res) => {
 });
 /*------------------------------------------------*/
 app.get("/expired", async (req, res) => {
-    db.all("SELECT * FROM users", [], async (err, users) => {
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                error: err.message
+    try {
+        const users = await new Promise((resolve, reject) => {
+            db.all("SELECT * FROM users", [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
             });
-        }
+        });
 
         const now = new Date();
         const threeDays = 3 * 24 * 60 * 60 * 1000;
@@ -83,14 +83,8 @@ app.get("/expired", async (req, res) => {
             }
 
             const allServers = [
-                ...serversHistory.map(server => ({
-                    ...server,
-                    source: "paid"
-                })),
-                ...freeServers.map(server => ({
-                    ...server,
-                    source: "free"
-                }))
+                ...serversHistory.map(s => ({ ...s, source: "paid" })),
+                ...freeServers.map(s => ({ ...s, source: "free" }))
             ];
 
             for (const server of allServers) {
@@ -99,33 +93,95 @@ app.get("/expired", async (req, res) => {
                 const endDate = new Date(server.endDate);
                 const expired = endDate < now;
 
-                if (!expired) {
-                    if (server.subuserId) {
-                        try {
-                            const isVip =
-                                server.source === "paid" &&
-                                ["vip", "python", "gold", "premium"].includes(
-                                    String(server.category || "").toLowerCase()
-                                );
+                if (!expired && server.subuserId) {
+                    try {
+                        const normalPerms = [
+                            "control.console",
+                            "control.start",
+                            "control.stop",
+                            "control.restart",
 
-                            await restoreSubuserPermissions(
-                                config,
-                                server.identifier,
-                                server.subuserId,
-                                isVip
+                            "user.create",
+                            "user.read",
+                            "user.update",
+                            "user.delete",
+
+                            "file.create",
+                            "file.read",
+                            "file.read-content",
+                            "file.update",
+                            "file.delete",
+                            "file.archive",
+                            "file.sftp",
+
+                            "allocation.read",
+
+                            "startup.read",
+                            "startup.update",
+
+                            "schedule.create",
+                            "schedule.read",
+                            "schedule.update",
+                            "schedule.delete",
+
+                            "settings.rename",
+                            "settings.reinstall",
+
+                            "activity.read"
+                        ];
+
+                        const vipPerms = [
+                            "control.console",
+                            "control.start",
+                            "control.stop",
+                            "control.restart",
+
+                            "user.create",
+                            "user.read",
+                            "user.update",
+                            "user.delete",
+
+                            "file.create",
+                            "file.read",
+                            "file.update",
+                            "file.delete",
+
+                            "schedule.create",
+                            "schedule.read",
+                            "schedule.update",
+                            "schedule.delete",
+
+                            "settings.rename",
+
+                            "activity.read"
+                        ];
+
+                        const isVip =
+                            server.source === "paid" &&
+                            ["vip", "python", "gold", "premium"].includes(
+                                String(server.category || "").toLowerCase()
                             );
-                        } catch {}
-                    }
 
-                    continue;
+                        const perms = isVip ? vipPerms : normalPerms;
+
+                        await pteroRequest(
+                            config.url,
+                            config.clientKey,
+                            "PATCH",
+                            `client/servers/${server.identifier}/users/${server.subuserId}`,
+                            { permissions: perms }
+                        );
+                    } catch {}
                 }
 
-                if (server.subuserId) {
+                if (expired && server.subuserId) {
                     try {
-                        await removeSubuserPermissions(
-                            config,
-                            server.identifier,
-                            server.subuserId
+                        await pteroRequest(
+                            config.url,
+                            config.clientKey,
+                            "PATCH",
+                            `client/servers/${server.identifier}/users/${server.subuserId}`,
+                            { permissions: [] }
                         );
                     } catch {}
                 }
@@ -135,9 +191,11 @@ app.get("/expired", async (req, res) => {
 
                 if (shouldDelete) {
                     try {
-                        await deleteServer(
-                            config,
-                            server.serverId
+                        await pteroRequest(
+                            config.url,
+                            config.appKey,
+                            "DELETE",
+                            `application/servers/${server.serverId}`
                         );
 
                         if (server.source === "paid") {
@@ -166,21 +224,30 @@ app.get("/expired", async (req, res) => {
                 });
             }
 
-            db.run(
-                "UPDATE users SET servers_history = ?, free_servers = ? WHERE id = ?",
-                [
-                    JSON.stringify(serversHistory),
-                    JSON.stringify(freeServers),
-                    user.id
-                ]
-            );
+            await new Promise((resolve) => {
+                db.run(
+                    "UPDATE users SET servers_history = ?, free_servers = ? WHERE id = ?",
+                    [
+                        JSON.stringify(serversHistory),
+                        JSON.stringify(freeServers),
+                        user.id
+                    ],
+                    () => resolve()
+                );
+            });
         }
 
         res.json({
             success: true,
             expiredServers
         });
-    });
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
 });
 const VPS_CONFIG = {
     normal: {
