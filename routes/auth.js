@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 const db = dbModule.db;
 const generateId = dbModule.generateId;
 
+const rateLimit = require("express-rate-limit");
+
 const router = express.Router();
 const nodemailer = require("nodemailer");
 
@@ -22,7 +24,7 @@ function generateVerificationCode() {
 
 const sendVerificationEmail = (toEmail, code) => {
     const mailOptions = {
-        from: '"Anastasia Pay" <anastasiapay13@gmail.com>',
+        from: '"Anastasia Host" <anastasiahost13@gmail.com>',
         to: toEmail,
         subject: "رمز التحقق الخاص بك",
         text: `رمز التحقق الخاص بك هو: ${code}`,
@@ -62,7 +64,6 @@ ${code}
 
     return transporter.sendMail(mailOptions);
 };
-const rateLimit = require("express-rate-limit");
 
 const registerLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -70,7 +71,7 @@ const registerLimiter = rateLimit({
     message: { error: "Too many registration attempts, try again later" }
 });
 
-router.post("/registerx", registerLimiter, async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
     const { username, email, password, website } = req.body;
     const ip = req.ip;
 
