@@ -53,178 +53,53 @@ app.get("/apix/apix/apix/users", (req, res) => {
     });
 });
 /*------------------------------------------------*/
-app.get("/expired", async (req, res) => {
-    try {
-        const users = await new Promise((resolve, reject) => {
-            db.all("SELECT * FROM users", [], (err, rows) => {
-                if (err) return reject(err);
-                resolve(rows);
-            });
-        });
+router.get("/expired", (req, res) => {
+    db.all("SELECT * FROM users", [], (err, users) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
 
-        const now = Date.now();
-        const threeDays = 3 * 24 * 60 * 60 * 1000;
-        const expiredServers = [];
+        const now = new Date();
+        let expiredServers = [];
 
-        const getConfig = (server) => {
-            const category = String(server.category || "").toLowerCase();
-
-            if (category === "vip") return VPS_CONFIG.vip;
-            if (category === "python") return VPS_CONFIG.python;
-            if (server.source === "free") return VPS_CONFIG.free;
-
-            return VPS_CONFIG.normal;
-        };
-
-        // 🔥 limit concurrency helper (prevents 504)
-        const runLimited = async (items, fn, limit = 5) => {
-            const queue = [...items];
-            const workers = Array.from({ length: limit }).map(async () => {
-                while (queue.length) {
-                    const item = queue.shift();
-                    await fn(item);
-                }
-            });
-            await Promise.all(workers);
-        };
-
-        await runLimited(users, async (user) => {
+        users.forEach(user => {
             let serversHistory = [];
             let freeServers = [];
 
             try {
                 serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
-            } catch {}
+            } catch (e) {
+                serversHistory = [];
+            }
 
             try {
                 freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
-            } catch {}
+            } catch (e) {
+                freeServers = [];
+            }
 
-            const allServers = [
-                ...serversHistory.map(s => ({ ...s, source: "paid" })),
-                ...freeServers.map(s => ({ ...s, source: "free" }))
-            ];
+            const allServers = [...serversHistory, ...freeServers];
 
-            await runLimited(allServers, async (server) => {
-                if (!server.endDate || !server.serverId || !server.identifier) return;
+            const expired = allServers.filter(s => {
+                if (!s.endDate) return false;
+                return new Date(s.endDate) < now;
+            });
 
-                const config = getConfig(server);
-                if (!config) return;
-
-                const endTime = new Date(server.endDate).getTime();
-                if (isNaN(endTime)) return;
-
-                const expired = endTime < now;
-                const deleteAt = endTime + threeDays;
-                const shouldDelete = now >= deleteAt;
-
-                // 🟡 restore permissions
-                if (!expired) {
-                    try {
-                        const perms = [
-                            "control.console",
-                            "control.start",
-                            "control.stop",
-                            "control.restart",
-                            "user.create",
-                            "user.read",
-                            "user.update",
-                            "user.delete",
-                            "file.create",
-                            "file.read",
-                            "file.update",
-                            "file.delete",
-                            "schedule.create",
-                            "schedule.read",
-                            "schedule.update",
-                            "schedule.delete",
-                            "settings.rename",
-                            "activity.read"
-                        ];
-
-                        await pteroRequest(
-                            config.url,
-                            config.clientKey,
-                            "PATCH",
-                            `client/servers/${server.identifier}/users`,
-                            { permissions: perms }
-                        );
-                    } catch {}
-                }
-
-                // 🔴 remove permissions
-                if (expired) {
-                    try {
-                        await pteroRequest(
-                            config.url,
-                            config.clientKey,
-                            "PATCH",
-                            `client/servers/${server.identifier}/users`,
-                            { permissions: [] }
-                        );
-                    } catch {}
-                }
-
-                // 🗑️ delete server
-                if (shouldDelete) {
-                    try {
-                        await pteroRequest(
-                            config.url,
-                            config.appKey,
-                            "DELETE",
-                            `application/servers/${server.serverId}`
-                        );
-
-                        if (server.source === "paid") {
-                            serversHistory = serversHistory.filter(
-                                s => s.serverId !== server.serverId
-                            );
-                        } else {
-                            freeServers = freeServers.filter(
-                                s => s.serverId !== server.serverId
-                            );
-                        }
-                    } catch {}
-                }
-
+            if (expired.length > 0) {
                 expiredServers.push({
                     userId: user.id,
                     username: user.username,
                     email: user.email,
-                    serverId: server.serverId,
-                    identifier: server.identifier,
-                    name: server.name,
-                    category: server.category || "normal",
-                    expiredAt: server.endDate,
-                    deleteAt: new Date(deleteAt).toISOString(),
-                    deleted: shouldDelete
+                    expiredServers: expired
                 });
-            }, 3); // 👈 limit per user
-
-            await new Promise((resolve) => {
-                db.run(
-                    "UPDATE users SET servers_history = ?, free_servers = ? WHERE id = ?",
-                    [
-                        JSON.stringify(serversHistory),
-                        JSON.stringify(freeServers),
-                        user.id
-                    ],
-                    () => resolve()
-                );
-            });
-        }, 2); // 👈 global limit
+            }
+        });
 
         res.json({
             success: true,
             expiredServers
         });
-
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            error: err.message
-        });
-    }
+    });
 });
 const VPS_CONFIG = {
     normal: {
