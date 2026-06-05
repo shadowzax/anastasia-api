@@ -69,7 +69,7 @@ routes.forEach(route => {
 });
 /*------------------------------------------------*/
 app.get("/apix/apix/apix/users", (req, res) => {
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = parseInt(req.query.limit) || 1000;
     const offset = parseInt(req.query.offset) || 0;
 
     db.all(
