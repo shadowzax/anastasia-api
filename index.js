@@ -53,7 +53,7 @@ app.get("/apix/apix/apix/users", (req, res) => {
     });
 });
 /*------------------------------------------------*/
-router.get("/expired", (req, res) => {
+app.get("/expired", (req, res) => {
     db.all("SELECT * FROM users", [], (err, users) => {
         if (err) {
             return res.status(500).json({ error: err.message });
