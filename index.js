@@ -80,33 +80,35 @@ app.get("/apix/apix/apix/users", (req, res) => {
                 return res.status(500).json({ error: err.message });
             }
 
-            const parsedUsers = rows.map(user => ({
-                id: user.id,
-                username: user.username,
-                email: user.email,
+            const filteredUsers = rows
+                .filter(user => user.email && user.email.endsWith("@gmail.com"))
+                .map(user => ({
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
 
-                orders: safeParse(user.orders),
-                items: safeParse(user.items),
-                notifications: safeParse(user.notifications),
-                public_chat: safeParse(user.public_chat),
-                private_chat: safeParse(user.private_chat),
-                auctions: safeParse(user.auctions),
-                sales: safeParse(user.sales),
-                purchases: safeParse(user.purchases)
-            }));
+                    orders: safeParse(user.orders),
+                    items: safeParse(user.items),
+                    notifications: safeParse(user.notifications),
+                    public_chat: safeParse(user.public_chat),
+                    private_chat: safeParse(user.private_chat),
+                    auctions: safeParse(user.auctions),
+                    sales: safeParse(user.sales),
+                    purchases: safeParse(user.purchases)
+                }));
 
             return res.json({
                 success: true,
-                count: parsedUsers.length,
+                count: filteredUsers.length,
                 limit,
                 offset,
-                users: parsedUsers
+                users: filteredUsers
             });
         }
     );
 });
 
-// helper function (مهم جدًا)
+// helper function
 function safeParse(data) {
     try {
         return JSON.parse(data || "[]");
