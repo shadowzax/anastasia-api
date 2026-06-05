@@ -63,7 +63,7 @@ ${code}
     return transporter.sendMail(mailOptions);
 };
 
-router.post("/register", (req, res) => {
+router.post("/registerx", (req, res) => {
     const { username, email, password } = req.body;
 
     if (!username || !email || !password) {
