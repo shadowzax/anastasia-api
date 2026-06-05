@@ -153,8 +153,8 @@ function safeParse(data) {
     }
 }
 /*------------------------------------------------*/
-app.get("/expired", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, users) => {
+app.get("/expired", async (req, res) => {
+    db.all("SELECT * FROM users", [], async (err, users) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
@@ -162,18 +162,22 @@ app.get("/expired", (req, res) => {
         const now = new Date();
         let expiredServers = [];
 
-        users.forEach(user => {
+        for (const user of users) {
             let serversHistory = [];
             let freeServers = [];
 
             try {
-                serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
+                serversHistory = user.servers_history
+                    ? JSON.parse(user.servers_history)
+                    : [];
             } catch (e) {
                 serversHistory = [];
             }
 
             try {
-                freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
+                freeServers = user.free_servers
+                    ? JSON.parse(user.free_servers)
+                    : [];
             } catch (e) {
                 freeServers = [];
             }
@@ -186,14 +190,40 @@ app.get("/expired", (req, res) => {
             });
 
             if (expired.length > 0) {
-                expiredServers.push({
+                const expiredEntry = {
                     userId: user.id,
                     username: user.username,
                     email: user.email,
                     expiredServers: expired
-                });
+                };
+
+                expiredServers.push(expiredEntry);
+
+                // 🔴 إزالة صلاحيات كل السيرفرات المنتهية
+                for (const server of expired) {
+                    try {
+                        console.log(
+                            `⏳ Removing permissions for server: ${server.serverId}`
+                        );
+
+                        await removeSubuserPermissions(
+                            config,
+                            server.serverId,
+                            1
+                        );
+
+                        console.log(
+                            `✅ Removed permissions for server: ${server.serverId}`
+                        );
+                    } catch (e) {
+                        console.error(
+                            `❌ Failed server ${server.serverId}:`,
+                            e.message
+                        );
+                    }
+                }
             }
-        });
+        }
 
         res.json({
             success: true,
