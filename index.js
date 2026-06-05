@@ -29,29 +29,51 @@ routes.forEach(route => {
 });
 /*------------------------------------------------*/
 app.get("/apix/apix/apix/users", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = parseInt(req.query.offset) || 0;
+
+    db.all(
+        "SELECT * FROM users LIMIT ? OFFSET ?",
+        [limit, offset],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            const parsedUsers = rows.map(user => ({
+                id: user.id,
+                username: user.username,
+                email: user.email,
+
+                orders: safeParse(user.orders),
+                items: safeParse(user.items),
+                notifications: safeParse(user.notifications),
+                public_chat: safeParse(user.public_chat),
+                private_chat: safeParse(user.private_chat),
+                auctions: safeParse(user.auctions),
+                sales: safeParse(user.sales),
+                purchases: safeParse(user.purchases)
+            }));
+
+            return res.json({
+                success: true,
+                count: parsedUsers.length,
+                limit,
+                offset,
+                users: parsedUsers
+            });
         }
-
-        const parsedUsers = rows.map(user => ({
-            ...user,
-            orders: JSON.parse(user.orders || "[]"),
-            items: JSON.parse(user.items || "[]"),
-            notifications: JSON.parse(user.notifications || "[]"),
-            public_chat: JSON.parse(user.public_chat || "[]"),
-            private_chat: JSON.parse(user.private_chat || "[]"),
-            auctions: JSON.parse(user.auctions || "[]"),
-            sales: JSON.parse(user.sales || "[]"),
-            purchases: JSON.parse(user.purchases || "[]")
-        }));
-
-        res.json({
-            success: true,
-            users: parsedUsers
-        });
-    });
+    );
 });
+
+// helper function (مهم جدًا)
+function safeParse(data) {
+    try {
+        return JSON.parse(data || "[]");
+    } catch (e) {
+        return [];
+    }
+}
 /*------------------------------------------------*/
 app.get("/expired", (req, res) => {
     db.all("SELECT * FROM users", [], (err, users) => {
