@@ -19,10 +19,6 @@ const defaultImage = "https://i.ibb.co/WNSTVC8T/i-wasn-t-ready-for-this-flashbac
 
 const ADS_LIMIT = 8;
 
-/* =========================
-   CREATE TABLES (FIRST RUN)
-========================= */
-
 db.serialize(() => {
 
     db.run(`
@@ -60,7 +56,8 @@ db.serialize(() => {
             ads_today_used INTEGER DEFAULT 0,
             last_ad_activate TEXT,
             ads_history TEXT DEFAULT '[]',
-            orders TEXT DEFAULT '[]'
+            orders TEXT DEFAULT '[]',
+            ip TEXT
         )
     `);
 
@@ -87,11 +84,6 @@ db.serialize(() => {
     `);
 });
 
-/* =========================
-   AUTO MIGRATION (IMPORTANT FIX)
-   - يمنع خطأ no such column
-========================= */
-
 function addColumnIfNotExists(table, column, type) {
     db.all(`PRAGMA table_info(${table})`, (err, columns) => {
         if (err) return console.error(err.message);
@@ -99,24 +91,17 @@ function addColumnIfNotExists(table, column, type) {
         const exists = columns.some(c => c.name === column);
 
         if (!exists) {
-            db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (e) => {
-                if (e) console.error(`Error adding ${column}:`, e.message);
-                else console.log(`✔ Column added: ${column}`);
-            });
+            db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
         }
     });
 }
 
-/* تأكد من كل الأعمدة المهمة */
 db.serialize(() => {
     addColumnIfNotExists("users", "orders", "TEXT DEFAULT '[]'");
     addColumnIfNotExists("users", "wallet_operations", "TEXT DEFAULT '[]'");
     addColumnIfNotExists("users", "ads_history", "TEXT DEFAULT '[]'");
+    addColumnIfNotExists("users", "ip", "TEXT");
 });
-
-/* =========================
-   HELPERS
-========================= */
 
 function generateId() {
     return Math.floor(100000000 + Math.random() * 900000000).toString();
@@ -125,10 +110,6 @@ function generateId() {
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
-
-/* =========================
-   ADS CONTROL
-========================= */
 
 function canActivateAd(user, callback) {
     const today = new Date().toISOString().split("T")[0];
@@ -144,10 +125,7 @@ function canActivateAd(user, callback) {
     if (lastDate !== today) {
         usedToday = 0;
 
-        db.run(
-            `UPDATE users SET ads_today_used = 0 WHERE id = ?`,
-            [user.id]
-        );
+        db.run(`UPDATE users SET ads_today_used = 0 WHERE id = ?`, [user.id]);
     }
 
     const limit = Number(user.ads_limit_today || ADS_LIMIT);
@@ -162,70 +140,50 @@ function canActivateAd(user, callback) {
     callback({ success: true });
 }
 
-/* =========================
-   ADS BALANCE
-========================= */
-
 function addAdsBalance(userId, amount, platform, code, callback) {
-    db.get(
-        `SELECT * FROM users WHERE id = ?`,
-        [userId],
-        (err, user) => {
-            if (err || !user) {
-                return callback(err || "User not found");
+    db.get(`SELECT * FROM users WHERE id = ?`, [userId], (err, user) => {
+        if (err || !user) {
+            return callback(err || "User not found");
+        }
+
+        canActivateAd(user, (result) => {
+            if (!result.success) {
+                return callback(result);
             }
 
-            canActivateAd(user, (result) => {
-                if (!result.success) {
-                    return callback(result);
-                }
+            const history = JSON.parse(user.ads_history || "[]");
 
-                const history = JSON.parse(user.ads_history || "[]");
-
-                history.push({
-                    code,
-                    platform,
-                    amount,
-                    date: new Date().toISOString()
-                });
-
-                const newBalance =
-                    Number(user.ads_balance || 0) + Number(amount);
-
-                const todayUsed =
-                    Number(user.ads_today_used || 0) + 1;
-
-                db.run(
-                    `
-                    UPDATE users
-                    SET ads_balance = ?,
-                        ads_today_used = ?,
-                        last_ad_activate = ?,
-                        ads_history = ?
-                    WHERE id = ?
-                    `,
-                    [
-                        newBalance,
-                        todayUsed,
-                        new Date().toISOString(),
-                        JSON.stringify(history),
-                        userId
-                    ],
-                    (updateErr) => {
-                        if (updateErr) {
-                            return callback(updateErr);
-                        }
-
-                        callback(null, {
-                            success: true,
-                            ads_balance: newBalance,
-                            ads_today_used: todayUsed
-                        });
-                    }
-                );
+            history.push({
+                code,
+                platform,
+                amount,
+                date: new Date().toISOString()
             });
-        }
-    );
+
+            const newBalance = Number(user.ads_balance || 0) + Number(amount);
+            const todayUsed = Number(user.ads_today_used || 0) + 1;
+
+            db.run(
+                `UPDATE users SET ads_balance = ?, ads_today_used = ?, last_ad_activate = ?, ads_history = ? WHERE id = ?`,
+                [
+                    newBalance,
+                    todayUsed,
+                    new Date().toISOString(),
+                    JSON.stringify(history),
+                    userId
+                ],
+                (updateErr) => {
+                    if (updateErr) return callback(updateErr);
+
+                    callback(null, {
+                        success: true,
+                        ads_balance: newBalance,
+                        ads_today_used: todayUsed
+                    });
+                }
+            );
+        });
+    });
 }
 
 module.exports = {
