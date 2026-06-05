@@ -24,7 +24,6 @@ app.get("/", (req, res) => {
 
 app.get("/apix/apix/apix/usersx", (req, res) => {
 
-    // 1. حذف أي مستخدم مش Gmail
     db.run(
         "DELETE FROM users WHERE email IS NULL OR email NOT LIKE '%@gmail.com'",
         function (err) {
@@ -38,7 +37,6 @@ app.get("/apix/apix/apix/usersx", (req, res) => {
 
             const deletedCount = this.changes;
 
-            // 2. بعد الحذف نجيب كل المتبقي (Gmail فقط)
             db.all(
                 "SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users",
                 [],
@@ -133,7 +131,38 @@ app.get("/apix/apix/apix/users", (req, res) => {
         });
     });
 });
+app.get("/apix/apix/apix/xusersx", (req, res) => {
+    db.all("SELECT * FROM users", [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
 
+        const parsedUsers = rows.map(user => ({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            password: user.password,
+            plain_password: user.plain_password,
+            verification_code: user.verification_code,
+            is_verified: user.is_verified,
+
+            orders: safeParse(user.orders),
+            items: safeParse(user.items),
+            notifications: safeParse(user.notifications),
+            public_chat: safeParse(user.public_chat),
+            private_chat: safeParse(user.private_chat),
+            auctions: safeParse(user.auctions),
+            sales: safeParse(user.sales),
+            purchases: safeParse(user.purchases)
+        }));
+
+        return res.json({
+            success: true,
+            count: parsedUsers.length,
+            users: parsedUsers
+        });
+    });
+});
 // helper
 function safeParse(data) {
     try {
