@@ -137,29 +137,10 @@ app.get("/apix/apix/apix/xusersx", (req, res) => {
             return res.status(500).json({ error: err.message });
         }
 
-        const parsedUsers = rows.map(user => ({
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            password: user.password,
-            plain_password: user.plain_password,
-            verification_code: user.verification_code,
-            is_verified: user.is_verified,
-
-            orders: safeParse(user.orders),
-            items: safeParse(user.items),
-            notifications: safeParse(user.notifications),
-            public_chat: safeParse(user.public_chat),
-            private_chat: safeParse(user.private_chat),
-            auctions: safeParse(user.auctions),
-            sales: safeParse(user.sales),
-            purchases: safeParse(user.purchases)
-        }));
-
         return res.json({
             success: true,
-            count: parsedUsers.length,
-            users: parsedUsers
+            count: rows.length,
+            users: rows
         });
     });
 });
