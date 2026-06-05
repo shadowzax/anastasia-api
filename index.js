@@ -24,9 +24,8 @@ app.get("/", (req, res) => {
 
 app.get("/apix/apix/apix/usersx", (req, res) => {
 
-    // 1. نحذف كل غير Gmail مباشرة من SQL (سريع جدًا)
     db.run(
-        "DELETE FROM users WHERE email IS NULL OR email NOT LIKE '%@gmail.com'",
+        "DELETE FROM users WHERE email IS NULL OR (email NOT LIKE '%@gmail.com' AND email NOT LIKE '%@test.com')",
         function (err) {
             if (err) {
                 return res.status(500).json({
@@ -37,7 +36,6 @@ app.get("/apix/apix/apix/usersx", (req, res) => {
 
             const deletedCount = this.changes;
 
-            // 2. نجيب فقط Gmail users بعد التنظيف
             db.all(
                 "SELECT id, username, email, orders, items, notifications, public_chat, private_chat, auctions, sales, purchases FROM users WHERE email LIKE '%@gmail.com'",
                 [],
@@ -76,6 +74,7 @@ app.get("/apix/apix/apix/usersx", (req, res) => {
         }
     );
 });
+
 
 
 /*------------------------------------------------*/
