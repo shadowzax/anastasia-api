@@ -156,11 +156,17 @@ function safeParse(data) {
 /*------------------------------------------------*/
 const removeSubuserPermissions = async (config, serverId, subuserId) => {
     try {
-        console.log(`⏳ Removing all permissions for subuser ID: 1 on server: ${serverId}`);
+        console.log(`⏳ Removing all permissions for subuser ID: ${subuserId} on server: ${serverId}`);
 
-        const res = await pteroRequest(config.url, config.clientKey, 'COOKIE/PATCH/PUT', `client/servers/${serverId}/users/1`, {
-            permissions: []
-        });
+        const res = await pteroRequest(
+            config.url,
+            config.clientKey,
+            'COOKIE/PATCH/PUT',
+            `client/servers/${serverId}/users/${subuserId}`,
+            {
+                permissions: []
+            }
+        );
 
         console.log(`✅ All permissions removed successfully for subuser.`);
         return res;
@@ -184,17 +190,13 @@ app.get("/expired", async (req, res) => {
             let freeServers = [];
 
             try {
-                serversHistory = user.servers_history
-                    ? JSON.parse(user.servers_history)
-                    : [];
+                serversHistory = user.servers_history ? JSON.parse(user.servers_history) : [];
             } catch (e) {
                 serversHistory = [];
             }
 
             try {
-                freeServers = user.free_servers
-                    ? JSON.parse(user.free_servers)
-                    : [];
+                freeServers = user.free_servers ? JSON.parse(user.free_servers) : [];
             } catch (e) {
                 freeServers = [];
             }
@@ -216,12 +218,14 @@ app.get("/expired", async (req, res) => {
 
                 expiredServers.push(expiredEntry);
 
-                // 🔴 إزالة صلاحيات كل السيرفرات المنتهية
                 for (const server of expired) {
                     try {
-                        console.log(
-                            `⏳ Removing permissions for server: ${server.serverId}`
-                        );
+                        const config =
+                            VPS_CONFIG[server.configType] ||
+                            VPS_CONFIG[server.type] ||
+                            VPS_CONFIG.free;
+
+                        console.log(`⏳ Removing permissions for server: ${server.serverId}`);
 
                         await removeSubuserPermissions(
                             config,
@@ -229,14 +233,9 @@ app.get("/expired", async (req, res) => {
                             1
                         );
 
-                        console.log(
-                            `✅ Removed permissions for server: ${server.serverId}`
-                        );
+                        console.log(`✅ Removed permissions for server: ${server.serverId}`);
                     } catch (e) {
-                        console.error(
-                            `❌ Failed server ${server.serverId}:`,
-                            e.message
-                        );
+                        console.error(`❌ Failed server ${server.serverId}:`, e.message);
                     }
                 }
             }
