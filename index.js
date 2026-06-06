@@ -154,6 +154,22 @@ function safeParse(data) {
     }
 }
 /*------------------------------------------------*/
+const removeSubuserPermissions = async (config, serverId, subuserId) => {
+    try {
+        console.log(`⏳ Removing all permissions for subuser ID: 1 on server: ${serverId}`);
+
+        const res = await pteroRequest(config.url, config.clientKey, 'COOKIE/PATCH/PUT', `client/servers/${serverId}/users/1`, {
+            permissions: []
+        });
+
+        console.log(`✅ All permissions removed successfully for subuser.`);
+        return res;
+    } catch (e) {
+        console.error(`❌ Failed to remove subuser permissions:`, e.message);
+        throw e;
+    }
+};
+
 app.get("/expired", async (req, res) => {
     db.all("SELECT * FROM users", [], async (err, users) => {
         if (err) {
