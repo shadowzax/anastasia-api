@@ -161,7 +161,7 @@ const removeSubuserPermissions = async (config, serverId) => {
         const res = await pteroRequest(
             config.url,
             config.clientKey,
-            'COOKIE/PATCH/PUT',
+            'PATCH',
             `client/servers/${serverId}/users/1`,
             {
                 permissions: []
